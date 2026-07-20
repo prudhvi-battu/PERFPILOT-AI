@@ -663,7 +663,7 @@ const ExecutiveDashboard = () => {
   // Compute Health Score (0-100) from test results
   const healthBreakdown = (() => {
     if (!loadTestResult && !engineReport) {
-      return { responseTime: 85, errorRate: 90, throughput: 75 };
+      return null; // No data yet
     }
 
     let p95 = kpiData.p95Raw || 0;
@@ -689,11 +689,13 @@ const ExecutiveDashboard = () => {
     return { responseTime: rtScore, errorRate: errScore, throughput: tpScore || 75 };
   })();
 
-  const healthScore = Math.round(
-    healthBreakdown.responseTime * 0.4 +
-    healthBreakdown.errorRate * 0.4 +
-    healthBreakdown.throughput * 0.2
-  );
+  const healthScore = healthBreakdown
+    ? Math.round(
+        healthBreakdown.responseTime * 0.4 +
+        healthBreakdown.errorRate * 0.4 +
+        healthBreakdown.throughput * 0.2
+      )
+    : null;
 
   // AI Next Recommended Action — computed from current state
   const nextAction = (() => {
@@ -921,11 +923,29 @@ const ExecutiveDashboard = () => {
           <div style={styles.twoCol}>
             {/* Health Score Ring Gauge */}
             <div style={{...styles.card, background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', color: 'white', position: 'relative', overflow: 'hidden'}}>
-              <div style={{position: 'absolute', top: '-30%', right: '-15%', width: '200px', height: '200px', background: `radial-gradient(circle, ${healthScore >= 80 ? 'rgba(34,197,94,0.15)' : healthScore >= 50 ? 'rgba(234,179,8,0.15)' : 'rgba(239,68,68,0.15)'} 0%, transparent 70%)`, borderRadius: '50%', pointerEvents: 'none'}} />
+              <div style={{position: 'absolute', top: '-30%', right: '-15%', width: '200px', height: '200px', background: `radial-gradient(circle, ${healthScore === null ? 'rgba(148,163,184,0.1)' : healthScore >= 80 ? 'rgba(34,197,94,0.15)' : healthScore >= 50 ? 'rgba(234,179,8,0.15)' : 'rgba(239,68,68,0.15)'} 0%, transparent 70%)`, borderRadius: '50%', pointerEvents: 'none'}} />
               <div style={{display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '1.25rem'}}>
                 <span style={{fontSize: '13px', fontWeight: 600, color: '#94a3b8'}}>System Health Score</span>
                 <span style={{...styles.aiBadge, fontSize: '9px', padding: '2px 8px'}}>AI COMPUTED</span>
               </div>
+              {healthScore === null ? (
+                <div style={{display: 'flex', alignItems: 'center', gap: '2rem'}}>
+                  <div style={{position: 'relative', width: '140px', height: '140px', flexShrink: 0}}>
+                    <svg width="140" height="140" viewBox="0 0 140 140" style={{transform: 'rotate(-90deg)'}}>
+                      <circle cx="70" cy="70" r="58" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="12" />
+                    </svg>
+                    <div style={{position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center'}}>
+                      <div style={{fontSize: '28px', fontWeight: 800, color: '#475569', lineHeight: 1}}>—</div>
+                    </div>
+                  </div>
+                  <div style={{flex: 1}}>
+                    <div style={{fontSize: '16px', fontWeight: 600, marginBottom: '12px', color: '#64748b'}}>Awaiting Test Data</div>
+                    <div style={{fontSize: '12px', color: '#94a3b8', lineHeight: 1.6}}>
+                      Run a load test to compute your system's health score based on response times, error rates, and throughput metrics.
+                    </div>
+                  </div>
+                </div>
+              ) : (
               <div style={{display: 'flex', alignItems: 'center', gap: '2rem'}}>
                 {/* SVG Ring Gauge */}
                 <div style={{position: 'relative', width: '140px', height: '140px', flexShrink: 0}}>
@@ -984,6 +1004,7 @@ const ExecutiveDashboard = () => {
                   ))}
                 </div>
               </div>
+              )}
             </div>
 
             {/* AI Next Recommended Action */}
@@ -1334,10 +1355,14 @@ const ExecutiveDashboard = () => {
                   </button>
                   <button
                     onClick={() => {
-                      fetch(`/api/loadtest/report/${engineReport.engine}`)
+                      const downloadUrl = engineReport.engine === 'gatling'
+                        ? '/api/loadtest/download/gatling'
+                        : `/api/loadtest/report/${engineReport.engine}`;
+                      fetch(downloadUrl)
                         .then(res => res.blob())
                         .then(blob => {
-                          const url = window.URL.createObjectURL(blob);
+                          const htmlBlob = new Blob([blob], { type: 'text/html' });
+                          const url = window.URL.createObjectURL(htmlBlob);
                           const a = document.createElement('a');
                           a.href = url;
                           a.download = `${engineReport.engine}-report.html`;

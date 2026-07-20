@@ -45,3 +45,7 @@ coverage/
 # Secrets
 backend/.env
 .freebuff/
+
+# SQLite WAL files
+data/*.db-shm
+data/*.db-wal
