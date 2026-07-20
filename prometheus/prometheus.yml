@@ -1,0 +1,57 @@
+# Prometheus Configuration - AI Performance Testing Assistant
+# Supports both Docker Compose and bare-metal deployments
+# - Docker: services use container names as hosts
+# - Bare-metal: services use localhost
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  scrape_timeout: 10s
+
+scrape_configs:
+  # Application metrics
+  - job_name: 'ecommerce-backend'
+    metrics_path: '/api/metrics'
+    scrape_interval: 10s
+    static_configs:
+      # Docker deployment
+      - targets: ['backend:5000']
+        labels:
+          service: 'ecommerce-api'
+          environment: 'production'
+      # Bare-metal deployment (commented when using Docker)
+      # - targets: ['localhost:5000']
+      #   labels:
+      #     service: 'ecommerce-api'
+      #     environment: 'development'
+
+  # Node exporter for system metrics (bare-metal)
+  - job_name: 'node'
+    static_configs:
+      - targets: ['localhost:9100']
+        labels:
+          service: 'system'
+
+  # k6 performance test metrics
+  - job_name: 'k6-load-tests'
+    scrape_interval: 5s
+    honor_labels: true
+    static_configs:
+      - targets: ['localhost:6565']
+        labels:
+          service: 'k6'
+          test_type: 'performance'
+
+  # PostgreSQL exporter
+  - job_name: 'postgresql'
+    static_configs:
+      # Docker deployment
+      - targets: ['postgres-exporter:9187']
+        labels:
+          service: 'database'
+          db: 'ecommerce_perf'
+      # Bare-metal deployment (commented when using Docker)
+      # - targets: ['localhost:9187']
+      #   labels:
+      #     service: 'database'
+      #     db: 'ecommerce_perf'
