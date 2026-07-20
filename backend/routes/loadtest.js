@@ -406,13 +406,14 @@ router.get('/report/k6', (req, res) => {
   if (fs.existsSync(reportPath)) {
     res.removeHeader('Content-Security-Policy');
     res.setHeader('Content-Security-Policy', "default-src * 'unsafe-inline' 'unsafe-eval'; script-src * 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline'");
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.sendFile(reportPath);
   } else {
     res.status(404).json({ error: 'No k6 report available. Run a k6 test first.' });
   }
 });
 
-// GET /api/loadtest/report/gatling — Redirect to static Gatling report
+// GET /api/loadtest/report/gatling — Serve the Gatling HTML report directly
 router.get('/report/gatling', (req, res) => {
   const resultsDir = path.join(__dirname, '..', '..', 'reports', 'gatling-latest');
   if (!fs.existsSync(resultsDir)) {
@@ -420,22 +421,80 @@ router.get('/report/gatling', (req, res) => {
   }
   const subdirs = fs.readdirSync(resultsDir).filter(d => fs.statSync(path.join(resultsDir, d)).isDirectory());
   if (subdirs.length > 0) {
-    // Redirect to the static server which serves all assets correctly
-    return res.redirect(`/gatling-report/${subdirs[0]}/index.html`);
+    const reportDir = path.join(resultsDir, subdirs[0]);
+    const indexPath = path.join(reportDir, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      // Read the HTML file and rewrite relative paths to use our static route
+      let html = fs.readFileSync(indexPath, 'utf-8');
+      html = html.replace(/href="style\//g, 'href="/api/loadtest/report/gatling-assets/style/');
+      html = html.replace(/src="js\//g, 'src="/api/loadtest/report/gatling-assets/js/');
+      html = html.replace(/href="style\/favicon\.ico"/g, 'href="/api/loadtest/report/gatling-assets/style/favicon.ico"');
+      res.removeHeader('Content-Security-Policy');
+      res.setHeader('Content-Security-Policy', "default-src * 'unsafe-inline' 'unsafe-eval'; script-src * 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline'; img-src * data:");
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      return res.send(html);
+    }
   }
   res.status(404).json({ error: 'Gatling report index.html not found.' });
 });
 
-// Serve Gatling static assets (JS, CSS for the report)
+// Serve Gatling report static assets (JS, CSS, images)
 router.use('/report/gatling-assets', (req, res, next) => {
   const resultsDir = path.join(__dirname, '..', '..', 'reports', 'gatling-latest');
   if (!fs.existsSync(resultsDir)) return next();
   const subdirs = fs.readdirSync(resultsDir).filter(d => fs.statSync(path.join(resultsDir, d)).isDirectory());
   if (subdirs.length > 0) {
+    res.removeHeader('Content-Security-Policy');
     express.static(path.join(resultsDir, subdirs[0]))(req, res, next);
   } else {
     next();
   }
+});
+
+// GET /api/loadtest/download/gatling — Download self-contained Gatling report
+router.get('/download/gatling', (req, res) => {
+  const resultsDir = path.join(__dirname, '..', '..', 'reports', 'gatling-latest');
+  if (!fs.existsSync(resultsDir)) {
+    return res.status(404).json({ error: 'No Gatling report available.' });
+  }
+  const subdirs = fs.readdirSync(resultsDir).filter(d => fs.statSync(path.join(resultsDir, d)).isDirectory());
+  if (subdirs.length === 0) {
+    return res.status(404).json({ error: 'Gatling report not found.' });
+  }
+  const reportDir = path.join(resultsDir, subdirs[0]);
+  const indexPath = path.join(reportDir, 'index.html');
+  if (!fs.existsSync(indexPath)) {
+    return res.status(404).json({ error: 'Gatling report index.html not found.' });
+  }
+
+  let html = fs.readFileSync(indexPath, 'utf-8');
+
+  // Inline all CSS files
+  html = html.replace(/<link href="style\/([^"]+)" rel="stylesheet"[^>]*>/g, (match, filename) => {
+    const cssPath = path.join(reportDir, 'style', filename);
+    if (fs.existsSync(cssPath)) {
+      const css = fs.readFileSync(cssPath, 'utf-8');
+      return `<style>${css}</style>`;
+    }
+    return match;
+  });
+
+  // Inline all JS files
+  html = html.replace(/<script src="js\/([^"]+)"><\/script>/g, (match, filename) => {
+    const jsPath = path.join(reportDir, 'js', filename);
+    if (fs.existsSync(jsPath)) {
+      const js = fs.readFileSync(jsPath, 'utf-8');
+      return `<script>${js}</script>`;
+    }
+    return match;
+  });
+
+  // Remove favicon link (won't work offline anyway)
+  html = html.replace(/<link rel="shortcut icon"[^>]*>/, '');
+
+  res.setHeader('Content-Type', 'text/html; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="gatling-report.html"');
+  res.send(html);
 });
 
 // GET /api/loadtest/engine-status — Check which engines are available
