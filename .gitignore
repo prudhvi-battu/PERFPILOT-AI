@@ -41,3 +41,7 @@ docker-data/
 # Testing
 coverage/
 .nyc_output/
+
+# Secrets
+backend/.env
+.freebuff/
