@@ -3,7 +3,6 @@
 > **An autonomous AI Performance Engineer** that discovers APIs, generates load tests, runs performance analysis, and delivers executive recommendations — replacing traditional performance engineering overhead.
 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue)
-![Status](https://img.shields.io/badge/status-production-ready-green)
 ![AI](https://img.shields.io/badge/powered-by%20AI-orange)
 
 ---
