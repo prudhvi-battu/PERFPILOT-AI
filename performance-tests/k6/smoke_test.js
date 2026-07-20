@@ -28,8 +28,22 @@ const BASE_URL = __ENV.BASE_URL || 'http://localhost:5000';
 function getRandomProduct() {
   const products = [
     'smartphone-pro-x', 'laptop-ultra-15', 'wireless-headphones',
-    'tablet-pro-12', 'gaming-console', 'mechanical-keyboard',
-    'running-shoes', 'yoga-mat-premium', 'board-game-collection',
+    'smart-watch', 'tablet-pro-12', 'bluetooth-speaker',
+    'gaming-console', 'digital-camera', 'portable-charger',
+    'usb-c-hub', 'cotton-t-shirt', 'denim-jeans',
+    'winter-jacket', 'running-shoes', 'leather-belt',
+    'garden-tool-set', 'indoor-plant-pot', 'led-desk-lamp',
+    'smart-thermostat', 'cookware-set', 'programming-book',
+    'design-patterns', 'data-science-guide', 'business-strategy',
+    'cookbook-deluxe', 'yoga-mat-premium', 'dumbbell-set-20lbs',
+    'resistance-bands', 'water-bottle-insulated', 'fitness-tracker',
+    'board-game-collection', 'building-blocks-500pc', 'remote-control-car',
+    'puzzle-1000pc', 'stuffed-animal-bear', 'mechanical-keyboard',
+    'webcam-hd-4k', 'wireless-mouse', 'monitor-27-4k',
+    'ssd-1tb-external', 'wool-sweater', 'casual-sneakers',
+    'formal-shirt', 'winter-gloves', 'cashmere-scarf',
+    'air-purifier', 'robot-vacuum', 'coffee-maker-pro',
+    'electric-kettle', 'throw-blanket',
   ];
   return products[Math.floor(Math.random() * products.length)];
 }

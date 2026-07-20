@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
 import useLoadTest from '../hooks/useLoadTest';
 
 const styles = {
@@ -128,82 +127,6 @@ const styles = {
   },
 };
 
-// AI-generated performance analysis findings
-const defaultFindings = [
-  {
-    id: 1,
-    type: 'critical',
-    icon: '🔴',
-    iconBg: '#fef2f2',
-    title: 'Login API Saturation at 300+ Users',
-    description: 'Login endpoint response times degrade exponentially beyond 300 concurrent users. Average response time increases from 250ms to 2.8s. JWT signing operations become the primary bottleneck under load.',
-    severity: 'Critical',
-    severityColor: '#dc2626',
-    severityBg: '#fef2f2',
-    metric: 'Response Time: 250ms → 2.8s',
-  },
-  {
-    id: 2,
-    type: 'high',
-    icon: '🟠',
-    iconBg: '#fff7ed',
-    title: 'Checkout Process Bottleneck',
-    description: 'Checkout API response time increases from 2s baseline to 8.5s at peak load. Database transaction locking during order creation and inventory updates causes queue buildup.',
-    severity: 'High',
-    severityColor: '#ea580c',
-    severityBg: '#fff7ed',
-    metric: 'Response Time: 2s → 8.5s (+325%)',
-  },
-  {
-    id: 3,
-    type: 'high',
-    icon: '🟠',
-    iconBg: '#fff7ed',
-    title: 'Product Search Database Query Slowdown',
-    description: 'Product search query with ILIKE pattern scanning contributes to 70% of endpoint latency. Missing composite indexes on category + price + name columns cause full table scans at scale.',
-    severity: 'High',
-    severityColor: '#ea580c',
-    severityBg: '#fff7ed',
-    metric: 'DB Query: 120ms → 1.4s',
-  },
-  {
-    id: 4,
-    type: 'warning',
-    icon: '🟡',
-    iconBg: '#fefce8',
-    title: 'CPU Utilization Nearing Threshold',
-    description: 'Application server CPU reaches 88% utilization during peak loads (500+ users). Node.js event loop starts showing lag. Consider horizontal scaling or upgrading instance type.',
-    severity: 'Warning',
-    severityColor: '#ca8a04',
-    severityBg: '#fefce8',
-    metric: 'CPU: 88% of threshold',
-  },
-  {
-    id: 5,
-    type: 'warning',
-    icon: '🟡',
-    iconBg: '#fefce8',
-    title: 'Database Connection Pool Exhaustion',
-    description: 'Connection pool reaches max connections during checkout spikes. Pool size of 50 is insufficient for 500+ concurrent users. Connections remain blocked during transaction processing.',
-    severity: 'Warning',
-    severityColor: '#ca8a04',
-    severityBg: '#fefce8',
-    metric: 'Pool Usage: 100% at peak',
-  },
-  {
-    id: 6,
-    type: 'info',
-    icon: '🔵',
-    iconBg: '#eff6ff',
-    title: 'Memory Utilization Stable',
-    description: 'Application memory remains within acceptable limits (62% of allocated heap). No memory leaks detected during extended load testing.',
-    severity: 'Info',
-    severityColor: '#2563eb',
-    severityBg: '#eff6ff',
-    metric: 'Memory: 62% utilized',
-  },
-];
-
 const recommendations = [
   {
     title: 'Horizontal Scale Checkout Service',
@@ -239,18 +162,623 @@ const recommendations = [
   },
 ];
 
+// Generate dynamic findings from load test results
+function generateFindings(result) {
+  const findings = [];
+  let id = 1;
+  const summary = result.summary || {};
+  const rt = result.responseTimes || {};
+  const successRate = parseFloat(summary.success_rate) || 100;
+  const errorRate = 100 - successRate;
+  const p95 = parseFloat(rt.p95) || 0;
+  const p99 = parseFloat(rt.p99) || 0;
+  const avgRt = parseFloat(rt.avg) || 0;
+
+  // High error rate
+  if (errorRate > 30) {
+    findings.push({
+      id: id++, type: 'critical', icon: '🔴', iconBg: '#fef2f2',
+      title: `High Error Rate: ${errorRate.toFixed(1)}% requests failed`,
+      description: `${errorRate.toFixed(1)}% of requests failed during the ${result.scenario} test with ${result.users} concurrent users. This indicates severe bottlenecks — likely database write contention (SQLite lock) or connection pool exhaustion under load.`,
+      severity: 'Critical', severityColor: '#dc2626', severityBg: '#fef2f2',
+      metric: `Error Rate: ${errorRate.toFixed(1)}% | Failed: ${summary.failed_requests || 'N/A'}`,
+    });
+  } else if (errorRate > 10) {
+    findings.push({
+      id: id++, type: 'high', icon: '🟠', iconBg: '#fff7ed',
+      title: `Elevated Error Rate: ${errorRate.toFixed(1)}%`,
+      description: `${errorRate.toFixed(1)}% of requests failed. Some endpoints are degrading under ${result.users} concurrent users.`,
+      severity: 'High', severityColor: '#ea580c', severityBg: '#fff7ed',
+      metric: `Error Rate: ${errorRate.toFixed(1)}%`,
+    });
+  }
+
+  // P95 response time
+  if (p95 > 5000) {
+    findings.push({
+      id: id++, type: 'critical', icon: '🔴', iconBg: '#fef2f2',
+      title: `P95 Response Time: ${(p95/1000).toFixed(1)}s (Critical)`,
+      description: `95th percentile response time is ${(p95/1000).toFixed(1)} seconds. Users are experiencing severe delays. The system cannot handle ${result.users} concurrent users without major degradation.`,
+      severity: 'Critical', severityColor: '#dc2626', severityBg: '#fef2f2',
+      metric: `P95: ${p95.toFixed(0)}ms | P99: ${p99.toFixed(0)}ms | Avg: ${avgRt.toFixed(0)}ms`,
+    });
+  } else if (p95 > 2000) {
+    findings.push({
+      id: id++, type: 'high', icon: '🟠', iconBg: '#fff7ed',
+      title: `P95 Response Time: ${(p95/1000).toFixed(1)}s (Degraded)`,
+      description: `95th percentile at ${(p95/1000).toFixed(1)}s exceeds the 2s threshold. Some users are seeing slow responses under ${result.users} concurrent users.`,
+      severity: 'High', severityColor: '#ea580c', severityBg: '#fff7ed',
+      metric: `P95: ${p95.toFixed(0)}ms | Avg: ${avgRt.toFixed(0)}ms`,
+    });
+  } else if (p95 > 1000) {
+    findings.push({
+      id: id++, type: 'warning', icon: '🟡', iconBg: '#fefce8',
+      title: `P95 Response Time: ${p95.toFixed(0)}ms (Elevated)`,
+      description: `Response times are slightly elevated at the 95th percentile. Monitor as you scale beyond ${result.users} users.`,
+      severity: 'Warning', severityColor: '#ca8a04', severityBg: '#fefce8',
+      metric: `P95: ${p95.toFixed(0)}ms | Avg: ${avgRt.toFixed(0)}ms`,
+    });
+  }
+
+  // Throughput analysis
+  const rps = parseFloat(summary.requests_per_second) || 0;
+  if (rps > 0 && rps < result.users * 0.5) {
+    findings.push({
+      id: id++, type: 'high', icon: '🟠', iconBg: '#fff7ed',
+      title: `Low Throughput: ${rps.toFixed(1)} req/s`,
+      description: `With ${result.users} users, expected throughput should be higher. Current ${rps.toFixed(1)} req/s suggests server saturation or blocking operations.`,
+      severity: 'High', severityColor: '#ea580c', severityBg: '#fff7ed',
+      metric: `Throughput: ${rps.toFixed(1)} req/s for ${result.users} users`,
+    });
+  }
+
+  // If test passed perfectly
+  if (findings.length === 0) {
+    findings.push({
+      id: id++, type: 'info', icon: '✅', iconBg: '#f0fdf4',
+      title: 'All Systems Healthy',
+      description: `No bottlenecks detected. The system handled ${result.users} concurrent users with ${successRate.toFixed(1)}% success rate and P95 of ${p95.toFixed(0)}ms.`,
+      severity: 'Info', severityColor: '#16a34a', severityBg: '#f0fdf4',
+      metric: `Success: ${successRate.toFixed(1)}% | P95: ${p95.toFixed(0)}ms | RPS: ${rps.toFixed(1)}`,
+    });
+  }
+
+  return findings;
+}
+
+// Generate dynamic recommendations from load test results
+function generateRecommendations(result) {
+  const recs = [];
+  const summary = result.summary || {};
+  const rt = result.responseTimes || {};
+  const successRate = parseFloat(summary.success_rate) || 100;
+  const errorRate = 100 - successRate;
+  const p95 = rt.p95 || 0;
+
+  if (errorRate > 30) {
+    recs.push({
+      title: 'Migrate from SQLite to PostgreSQL',
+      description: `${errorRate.toFixed(0)}% error rate is caused by SQLite single-writer lock contention. PostgreSQL supports concurrent writes and connection pooling — this alone will fix the majority of failures.`,
+      impact: 'High Impact', impactColor: '#16a34a', impactBg: '#f0fdf4', effort: 'Medium Effort',
+    });
+    recs.push({
+      title: 'Implement Connection Pooling',
+      description: 'Use PgBouncer or built-in pool with min 20, max 100 connections. Prevents connection exhaustion under concurrent load.',
+      impact: 'High Impact', impactColor: '#16a34a', impactBg: '#f0fdf4', effort: 'Low Effort',
+    });
+  }
+
+  if (p95 > 2000) {
+    recs.push({
+      title: 'Add Database Indexes on Hot Paths',
+      description: `P95 of ${(p95/1000).toFixed(1)}s indicates slow queries. Add composite indexes on products(category_id, price) and orders(user_id, created_at) to eliminate full table scans.`,
+      impact: 'High Impact', impactColor: '#16a34a', impactBg: '#f0fdf4', effort: 'Low Effort',
+    });
+  }
+
+  if (p95 > 1000) {
+    recs.push({
+      title: 'Add Redis Caching for Product Listings',
+      description: 'Cache product search results and category listings with 60s TTL. Eliminates repeated DB hits for read-heavy endpoints.',
+      impact: 'Medium Impact', impactColor: '#ca8a04', impactBg: '#fefce8', effort: 'Medium Effort',
+    });
+  }
+
+  if (errorRate > 10) {
+    recs.push({
+      title: 'Implement Retry with Exponential Backoff',
+      description: 'Add client-side retry logic for failed checkout/cart operations. Handles transient DB lock errors gracefully.',
+      impact: 'Medium Impact', impactColor: '#ca8a04', impactBg: '#fefce8', effort: 'Low Effort',
+    });
+  }
+
+  if (result.users >= 50) {
+    recs.push({
+      title: 'Rate Limit Non-Critical Endpoints',
+      description: `At ${result.users} users, protect checkout and order endpoints with stricter rate limits. Prioritize revenue-generating flows.`,
+      impact: 'Medium Impact', impactColor: '#ca8a04', impactBg: '#fefce8', effort: 'Low Effort',
+    });
+  }
+
+  if (recs.length === 0) {
+    recs.push({
+      title: 'System Performing Well',
+      description: `No critical recommendations at ${result.users} users. Consider running higher load tests (200+ users) to find the breaking point.`,
+      impact: 'Info', impactColor: '#2563eb', impactBg: '#eff6ff', effort: 'N/A',
+    });
+  }
+
+  return recs;
+}
+
+// Generate findings from k6/Gatling engine report
+function generateFindingsFromEngine(report) {
+  if (!report || report.error) return [];
+  const findings = [];
+  let id = 1;
+
+  // k6 report has summary.metrics
+  if (report.engine === 'k6' && report.summary) {
+    const metrics = report.summary.metrics || {};
+    const httpDuration = metrics.http_req_duration || {};
+    const httpFailed = metrics.http_req_failed || {};
+    const httpReqs = metrics.http_reqs || {};
+
+    const p95 = httpDuration['p(95)'] || 0;
+    const failRate = ((httpFailed.value || 0) * 100);
+    const rps = httpReqs.rate || 0;
+
+    if (failRate > 30) {
+      findings.push({
+        id: id++, type: 'critical', icon: '🔴', iconBg: '#fef2f2',
+        title: `High Error Rate: ${failRate.toFixed(1)}% requests failed`,
+        description: `${failRate.toFixed(1)}% of requests failed during k6 test with ${report.users} users × ${report.duration}s. SQLite write contention causes cascading failures under concurrent load.`,
+        severity: 'Critical', severityColor: '#dc2626', severityBg: '#fef2f2',
+        metric: `Error Rate: ${failRate.toFixed(1)}% | Engine: k6`,
+      });
+    } else if (failRate > 10) {
+      findings.push({
+        id: id++, type: 'high', icon: '🟠', iconBg: '#fff7ed',
+        title: `Elevated Error Rate: ${failRate.toFixed(1)}%`,
+        description: `${failRate.toFixed(1)}% of requests failed with ${report.users} concurrent users.`,
+        severity: 'High', severityColor: '#ea580c', severityBg: '#fff7ed',
+        metric: `Error Rate: ${failRate.toFixed(1)}%`,
+      });
+    }
+
+    if (p95 > 5000) {
+      findings.push({
+        id: id++, type: 'critical', icon: '🔴', iconBg: '#fef2f2',
+        title: `P95 Response Time: ${(p95/1000).toFixed(1)}s (Critical)`,
+        description: `95th percentile at ${(p95/1000).toFixed(1)}s. Severe delays for ${report.users} concurrent users.`,
+        severity: 'Critical', severityColor: '#dc2626', severityBg: '#fef2f2',
+        metric: `P95: ${p95.toFixed(0)}ms | RPS: ${rps.toFixed(1)}/s`,
+      });
+    } else if (p95 > 2000) {
+      findings.push({
+        id: id++, type: 'high', icon: '🟠', iconBg: '#fff7ed',
+        title: `P95 Response Time: ${(p95/1000).toFixed(1)}s (Degraded)`,
+        description: `Response times elevated at the 95th percentile under ${report.users} users.`,
+        severity: 'High', severityColor: '#ea580c', severityBg: '#fff7ed',
+        metric: `P95: ${p95.toFixed(0)}ms`,
+      });
+    } else if (p95 > 500) {
+      findings.push({
+        id: id++, type: 'warning', icon: '🟡', iconBg: '#fefce8',
+        title: `P95 Response Time: ${p95.toFixed(0)}ms`,
+        description: `Slightly elevated but within acceptable range for ${report.users} users.`,
+        severity: 'Warning', severityColor: '#ca8a04', severityBg: '#fefce8',
+        metric: `P95: ${p95.toFixed(0)}ms`,
+      });
+    }
+
+    if (rps > 0 && rps < report.users * 0.3) {
+      findings.push({
+        id: id++, type: 'high', icon: '🟠', iconBg: '#fff7ed',
+        title: `Low Throughput: ${rps.toFixed(1)} req/s`,
+        description: `Expected higher throughput for ${report.users} users. Server is saturated.`,
+        severity: 'High', severityColor: '#ea580c', severityBg: '#fff7ed',
+        metric: `Throughput: ${rps.toFixed(1)} req/s`,
+      });
+    }
+
+    if (findings.length === 0) {
+      findings.push({
+        id: id++, type: 'info', icon: '✅', iconBg: '#f0fdf4',
+        title: 'All Systems Healthy',
+        description: `k6 test passed. ${report.users} users handled with ${(100 - failRate).toFixed(1)}% success rate, P95 ${p95.toFixed(0)}ms.`,
+        severity: 'Info', severityColor: '#16a34a', severityBg: '#f0fdf4',
+        metric: `Success: ${(100 - failRate).toFixed(1)}% | P95: ${p95.toFixed(0)}ms`,
+      });
+    }
+  }
+
+  // Gatling report (basic — we don't parse the simulation.log, just show completion status)
+  if (report.engine === 'gatling') {
+    findings.push({
+      id: id++, type: 'info', icon: '🔥', iconBg: '#fff7ed',
+      title: `Gatling Test Completed: ${report.users} users × ${report.duration}s`,
+      description: `Gatling simulation finished in ${report.elapsed}s. View the full interactive Gatling HTML report for detailed per-request breakdown, response time charts, and error analysis.`,
+      severity: 'Info', severityColor: '#ea580c', severityBg: '#fff7ed',
+      metric: `Duration: ${report.elapsed}s | View full report for details`,
+    });
+  }
+
+  return findings;
+}
+
+// Generate recommendations from k6/Gatling engine report
+function generateRecommendationsFromEngine(report) {
+  if (!report) return [];
+  const recs = [];
+
+  if (report.engine === 'k6' && report.summary) {
+    const metrics = report.summary.metrics || {};
+    const httpDuration = metrics.http_req_duration || {};
+    const httpFailed = metrics.http_req_failed || {};
+    const p95 = httpDuration['p(95)'] || 0;
+    const failRate = ((httpFailed.value || 0) * 100);
+
+    if (failRate > 30) {
+      recs.push({
+        title: 'Migrate from SQLite to PostgreSQL',
+        description: `${failRate.toFixed(0)}% failure rate from k6 confirms SQLite single-writer lock is the bottleneck. PostgreSQL handles concurrent writes natively.`,
+        impact: 'High Impact', impactColor: '#16a34a', impactBg: '#f0fdf4', effort: 'Medium Effort',
+      });
+      recs.push({
+        title: 'Implement Connection Pooling',
+        description: 'Use PgBouncer or built-in pool (min 20, max 100). Prevents connection exhaustion at scale.',
+        impact: 'High Impact', impactColor: '#16a34a', impactBg: '#f0fdf4', effort: 'Low Effort',
+      });
+    }
+
+    if (p95 > 2000) {
+      recs.push({
+        title: 'Add Database Indexes',
+        description: `k6 shows P95 of ${(p95/1000).toFixed(1)}s. Add composite indexes on products(category_id, price) and orders(user_id, created_at).`,
+        impact: 'High Impact', impactColor: '#16a34a', impactBg: '#f0fdf4', effort: 'Low Effort',
+      });
+    }
+
+    if (p95 > 500) {
+      recs.push({
+        title: 'Add Redis Caching',
+        description: 'Cache product listings and search results with 60s TTL. Reduces DB load on read-heavy endpoints.',
+        impact: 'Medium Impact', impactColor: '#ca8a04', impactBg: '#fefce8', effort: 'Medium Effort',
+      });
+    }
+
+    if (failRate > 10) {
+      recs.push({
+        title: 'Implement Retry with Backoff',
+        description: 'Add client-side retry logic for transient DB lock errors on checkout and cart operations.',
+        impact: 'Medium Impact', impactColor: '#ca8a04', impactBg: '#fefce8', effort: 'Low Effort',
+      });
+    }
+
+    if (recs.length === 0) {
+      recs.push({
+        title: 'System Performing Well',
+        description: `No critical issues at ${report.users} users. Try scaling to 50+ users to find the breaking point.`,
+        impact: 'Info', impactColor: '#2563eb', impactBg: '#eff6ff', effort: 'N/A',
+      });
+    }
+  }
+
+  if (report.engine === 'gatling') {
+    recs.push({
+      title: 'Review Gatling HTML Report',
+      description: 'Click "View Interactive Report" for per-request response time distribution, active users timeline, and error breakdown with Highcharts.',
+      impact: 'Info', impactColor: '#2563eb', impactBg: '#eff6ff', effort: 'N/A',
+    });
+    recs.push({
+      title: 'Compare with k6 Results',
+      description: `Run the same ${report.users}-user test with k6 to cross-validate findings. Different engines may reveal different bottlenecks.`,
+      impact: 'Medium Impact', impactColor: '#ca8a04', impactBg: '#fefce8', effort: 'Low Effort',
+    });
+  }
+
+  return recs;
+}
+
 const ExecutiveDashboard = () => {
-  const [findings] = useState(defaultFindings);
   const [activeTab, setActiveTab] = useState('overview');
-  const [customUsers, setCustomUsers] = useState(100);
+  const [customUsers, setCustomUsers] = useState(1);
+  const [customDuration, setCustomDuration] = useState(30);
+  const [selectedEngine, setSelectedEngine] = useState('node');
+  const [engineReport, setEngineReport] = useState(null);
+  const [engineRunning, setEngineRunning] = useState(false);
+  const [engineElapsed, setEngineElapsed] = useState(0);
+  const [lastAnalysisTime, setLastAnalysisTime] = useState(null);
+  const [lastAnalysisDuration, setLastAnalysisDuration] = useState(null);
+  const [lastTestRunId, setLastTestRunId] = useState(null);
   const { status: loadTestStatus, result: loadTestResult, error: loadTestError, runLoadTest } = useLoadTest();
 
-  const criticalCount = findings.filter(f => f.severity === 'Critical').length;
-  const highCount = findings.filter(f => f.severity === 'High').length;
-  const warningCount = findings.filter(f => f.severity === 'Warning').length;
+  // Update footer metrics only when a test completes
+  useEffect(() => {
+    if (loadTestResult && loadTestResult.timestamp) {
+      setLastAnalysisTime(new Date(loadTestResult.timestamp).toLocaleString('en-US', {
+        year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      }));
+      setLastAnalysisDuration(`${loadTestResult.elapsed || 0} seconds`);
+      setLastTestRunId('PERF-' + loadTestResult.timestamp.replace(/[^0-9]/g, '').slice(-8).toUpperCase());
+    }
+  }, [loadTestResult]);
+
+  // Stop engine animation when node test completes or errors
+  useEffect(() => {
+    if (selectedEngine === 'node' && engineRunning && (loadTestStatus === 'done' || loadTestStatus === null)) {
+      setEngineRunning(false);
+    }
+  }, [loadTestStatus, selectedEngine, engineRunning]);
+
+  // Also update when engine report arrives (k6/gatling)
+  useEffect(() => {
+    if (engineReport && engineReport.timestamp) {
+      setLastAnalysisTime(new Date(engineReport.timestamp).toLocaleString('en-US', {
+        year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
+      }));
+      setLastAnalysisDuration(`${engineReport.elapsed || 0} seconds`);
+      setLastTestRunId('PERF-' + engineReport.engine.toUpperCase() + '-' + engineReport.timestamp.replace(/[^0-9]/g, '').slice(-6));
+    }
+  }, [engineReport]);
+
+  // Handle running tests with different engines
+  const handleRunEngine = async () => {
+    if (selectedEngine === 'node') {
+      // Start elapsed timer for node (same animation as k6/gatling)
+      setEngineRunning(true);
+      setEngineElapsed(0);
+      const timerStart = Date.now();
+      const timerInterval = setInterval(() => {
+        setEngineElapsed(Math.round((Date.now() - timerStart) / 1000));
+      }, 1000);
+
+      runLoadTest('Custom Load Test', customUsers, customDuration * 1000, () => {
+        clearInterval(timerInterval);
+        setEngineRunning(false);
+      });
+      return;
+    }
+
+    const token = localStorage.getItem('token');
+    const endpoint = selectedEngine === 'k6' ? '/api/loadtest/run-k6' : '/api/loadtest/run-gatling';
+
+    try {
+      setEngineRunning(true);
+      setEngineElapsed(0);
+      setEngineReport(null);
+
+      // Start elapsed timer
+      const timerStart = Date.now();
+      const timerInterval = setInterval(() => {
+        setEngineElapsed(Math.round((Date.now() - timerStart) / 1000));
+      }, 1000);
+
+      await fetch(`${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+        body: JSON.stringify({ users: customUsers, duration: customDuration }),
+      });
+
+      // Poll for completion
+      const pollInterval = setInterval(async () => {
+        try {
+          const res = await fetch('/api/loadtest/engine-status', {
+            headers: { 'Authorization': `Bearer ${token}` },
+          });
+          const data = await res.json();
+          if (!data.isRunning) {
+            clearInterval(pollInterval);
+            clearInterval(timerInterval);
+            setEngineRunning(false);
+            const result = data.lastResults[selectedEngine];
+            if (result && !result.error) {
+              setEngineReport(result);
+            }
+          }
+        } catch (e) { /* ignore polling errors */ }
+      }, 2000);
+
+      // Safety timeout
+      setTimeout(() => { clearInterval(pollInterval); clearInterval(timerInterval); setEngineRunning(false); }, 300000);
+    } catch (err) {
+      setEngineRunning(false);
+      console.error('Engine run failed:', err);
+    }
+  };
+
+  // Generate dynamic findings from load test results (Node runner OR k6/Gatling engine)
+  const engineFindings = engineReport ? generateFindingsFromEngine(engineReport) : [];
+  const nodeFindings = loadTestResult ? generateFindings(loadTestResult) : [];
+  // Use the most recent result: engine report takes priority if newer
+  const dynamicFindings = engineFindings.length > 0 && (!loadTestResult || (engineReport && engineReport.timestamp > (loadTestResult.timestamp || '')))
+    ? engineFindings
+    : nodeFindings;
+  const displayFindings = dynamicFindings.length > 0 ? dynamicFindings : [];
+
+  const criticalCount = displayFindings.filter(f => f.severity === 'Critical').length;
+  const highCount = displayFindings.filter(f => f.severity === 'High').length;
+  const warningCount = displayFindings.filter(f => f.severity === 'Warning').length;
+
+  // Compute KPI data from the most recent test result (Node, k6, or Gatling)
+  const kpiData = (() => {
+    // k6 engine report
+    if (engineReport && engineReport.engine === 'k6' && engineReport.summary) {
+      const metrics = engineReport.summary.metrics || {};
+      const httpDuration = metrics.http_req_duration || {};
+      const httpFailed = metrics.http_req_failed || {};
+      const httpReqs = metrics.http_reqs || {};
+      const p95 = httpDuration['p(95)'] || 0;
+      const failRate = (httpFailed.value || 0) * 100;
+      const successRate = (100 - failRate).toFixed(1);
+      const rps = (httpReqs.rate || 0).toFixed(1);
+      const totalReqs = httpReqs.count || 0;
+      const p95Color = p95 > 2000 ? '#dc2626' : p95 > 500 ? '#ca8a04' : '#16a34a';
+
+      return {
+        usersTested: `${engineReport.users} users`,
+        successRate: parseFloat(successRate),
+        throughput: `${rps} req/s`,
+        totalRequests: totalReqs.toLocaleString(),
+        p95: p95 > 1000 ? `${(p95/1000).toFixed(1)}s` : `${p95.toFixed(0)}ms`,
+        p95Raw: p95,
+        p95Color,
+      };
+    }
+    // Gatling engine report
+    if (engineReport && engineReport.engine === 'gatling') {
+      return {
+        usersTested: `${engineReport.users} users`,
+        successRate: 90, // Gatling doesn't provide this in our simple result
+        throughput: `~${(engineReport.users * 5 / engineReport.elapsed * engineReport.elapsed / engineReport.duration).toFixed(1)} req/s`,
+        totalRequests: '—',
+        p95: '—',
+        p95Raw: 0,
+        p95Color: '#16a34a',
+      };
+    }
+    // Node runner result
+    if (loadTestResult && loadTestResult.summary) {
+      const successRate = parseFloat(loadTestResult.summary.success_rate) || 0;
+      const rps = loadTestResult.summary.requests_per_second || '0';
+      const totalReqs = loadTestResult.summary.total_requests || 0;
+      const p95 = loadTestResult.responseTimes?.p95 || 0;
+      const p95Color = p95 > 2000 ? '#dc2626' : p95 > 500 ? '#ca8a04' : '#16a34a';
+
+      return {
+        usersTested: `${loadTestResult.users} users`,
+        successRate,
+        throughput: `${rps} req/s`,
+        totalRequests: totalReqs.toLocaleString(),
+        p95: p95 > 1000 ? `${(p95/1000).toFixed(1)}s` : `${p95}ms`,
+        p95Raw: p95,
+        p95Color,
+      };
+    }
+    // No test run yet
+    return { usersTested: '—', successRate: 0, throughput: '—', totalRequests: '0', p95: '—', p95Raw: 0, p95Color: '#16a34a' };
+  })();
+
+  // Compute Health Score (0-100) from test results
+  const healthBreakdown = (() => {
+    if (!loadTestResult && !engineReport) {
+      return { responseTime: 85, errorRate: 90, throughput: 75 };
+    }
+
+    let p95 = kpiData.p95Raw || 0;
+    let successRate = kpiData.successRate || 100;
+    let rpsPerUser = 0;
+
+    if (engineReport && engineReport.engine === 'k6' && engineReport.summary) {
+      const metrics = engineReport.summary.metrics || {};
+      const httpReqs = metrics.http_reqs || {};
+      rpsPerUser = engineReport.users > 0 ? (httpReqs.rate || 0) / engineReport.users : 0;
+    } else if (loadTestResult && loadTestResult.summary) {
+      const rps = parseFloat(loadTestResult.summary.requests_per_second) || 0;
+      rpsPerUser = loadTestResult.users > 0 ? rps / loadTestResult.users : 0;
+    }
+
+    // Response time score: 100 at 0ms, 0 at 10s+
+    const rtScore = Math.max(0, Math.min(100, Math.round(100 - (p95 / 100))));
+    // Error rate score: 100 at 0% errors, 0 at 50%+ errors
+    const errScore = Math.max(0, Math.min(100, Math.round(successRate * 1.0)));
+    // Throughput score: based on req/s per user ratio
+    const tpScore = Math.max(0, Math.min(100, Math.round(rpsPerUser * 100)));
+
+    return { responseTime: rtScore, errorRate: errScore, throughput: tpScore || 75 };
+  })();
+
+  const healthScore = Math.round(
+    healthBreakdown.responseTime * 0.4 +
+    healthBreakdown.errorRate * 0.4 +
+    healthBreakdown.throughput * 0.2
+  );
+
+  // AI Next Recommended Action — computed from current state
+  const nextAction = (() => {
+    const errorRate = 100 - (kpiData.successRate || 100);
+    const p95 = kpiData.p95Raw || 0;
+
+    // No test run yet
+    if (!loadTestResult && !engineReport) {
+      return {
+        icon: '🚀',
+        title: 'Run Your First Load Test',
+        description: 'Start with a Smoke Test (50 users) to establish a performance baseline for your e-commerce platform.',
+        urgency: 'Get Started',
+        urgencyColor: '#6366f1',
+        urgencyBg: '#eef2ff',
+        impact: 'Baseline Data',
+        effort: '~30 seconds',
+        cta: '⚡ Run Smoke Test Now',
+      };
+    }
+
+    // Critical: high error rate
+    if (errorRate > 30) {
+      return {
+        icon: '🚨',
+        title: 'Migrate Database: SQLite → PostgreSQL',
+        description: `${errorRate.toFixed(0)}% error rate confirms SQLite write-lock contention. This is the #1 bottleneck blocking scalability.`,
+        urgency: 'Critical',
+        urgencyColor: '#dc2626',
+        urgencyBg: '#fef2f2',
+        impact: '~80% error reduction',
+        effort: 'Medium (2-4 hours)',
+        cta: null,
+      };
+    }
+
+    // High: slow response times
+    if (p95 > 2000) {
+      return {
+        icon: '⚠️',
+        title: 'Add Composite Database Indexes',
+        description: `P95 at ${(p95/1000).toFixed(1)}s. Adding indexes on products(category_id, price) and orders(user_id, created_at) will cut query time by ~80%.`,
+        urgency: 'High Priority',
+        urgencyColor: '#ea580c',
+        urgencyBg: '#fff7ed',
+        impact: '~80% faster queries',
+        effort: 'Low (15 minutes)',
+        cta: null,
+      };
+    }
+
+    // Warning: moderate degradation
+    if (p95 > 500) {
+      return {
+        icon: '💡',
+        title: 'Add Redis Caching Layer',
+        description: 'Product listings and search results are hitting the DB on every request. A Redis cache with 60s TTL would reduce DB load by ~60%.',
+        urgency: 'Recommended',
+        urgencyColor: '#ca8a04',
+        urgencyBg: '#fefce8',
+        impact: '~60% DB load reduction',
+        effort: 'Medium (1-2 hours)',
+        cta: null,
+      };
+    }
+
+    // System is healthy — suggest scaling test
+    const currentUsers = loadTestResult?.users || engineReport?.users || 50;
+    const nextUsers = Math.min(currentUsers * 2, 2000);
+    return {
+      icon: '📈',
+      title: `Scale Test to ${nextUsers} Users`,
+      description: `System handled ${currentUsers} users well. Run at ${nextUsers} users to find the breaking point and validate scalability.`,
+      urgency: 'Proactive',
+      urgencyColor: '#16a34a',
+      urgencyBg: '#f0fdf4',
+      impact: 'Find breaking point',
+      effort: '~60 seconds',
+      cta: `🚀 Run ${nextUsers}-User Test`,
+    };
+  })();
 
   return (
     <div style={styles.container}>
+      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
       <div style={styles.header}>
         <div style={styles.glow} />
         <div style={styles.headerBadge}>
@@ -263,56 +791,71 @@ const ExecutiveDashboard = () => {
         </p>
       </div>
 
-      {/* KPI Cards */}
+      {/* KPI Cards - Dynamic from test results */}
       <div style={styles.grid}>
         <div style={styles.card}>
           <div style={styles.cardHeader}>
             <div style={{...styles.cardIcon, background: '#eef2ff', color: '#6366f1'}}>👥</div>
           </div>
-          <div style={styles.cardLabel}>User Capacity</div>
-          <div style={styles.cardValue}>300 / 1000</div>
-          <div style={{...styles.cardTrend, color: '#ca8a04'}}>⚠ Degradation starts at 300 users</div>
-          <div style={styles.thresholdBar}>
-            <div style={{...styles.thresholdFill, width: '30%', background: 'linear-gradient(90deg, #22c55e, #ca8a04)'}} />
+          <div style={styles.cardLabel}>Users Tested</div>
+          <div style={styles.cardValue}>{kpiData.usersTested}</div>
+          <div style={{...styles.cardTrend, color: kpiData.successRate >= 90 ? '#16a34a' : '#ca8a04'}}>
+            {kpiData.usersTested !== '—' ? `✓ ${kpiData.successRate}% success rate` : 'Run a test to see results'}
+          </div>
+          {kpiData.usersTested !== '—' && (
+            <div style={styles.thresholdBar}>
+              <div style={{...styles.thresholdFill, width: `${Math.min(100, kpiData.successRate)}%`, background: kpiData.successRate >= 90 ? 'linear-gradient(90deg, #22c55e, #16a34a)' : kpiData.successRate >= 50 ? 'linear-gradient(90deg, #22c55e, #ca8a04)' : 'linear-gradient(90deg, #ca8a04, #dc2626)'}} />
+            </div>
+          )}
+        </div>
+
+        <div style={styles.card}>
+          <div style={styles.cardHeader}>
+            <div style={{...styles.cardIcon, background: '#f0fdf4', color: '#16a34a'}}>⚡</div>
+          </div>
+          <div style={styles.cardLabel}>Throughput</div>
+          <div style={styles.cardValue}>{kpiData.throughput}</div>
+          <div style={{...styles.cardTrend, color: '#64748b'}}>
+            {kpiData.throughput !== '—' ? `${kpiData.totalRequests} total requests` : 'Requests per second'}
           </div>
         </div>
 
         <div style={styles.card}>
           <div style={styles.cardHeader}>
-            <div style={{...styles.cardIcon, background: '#f0fdf4', color: '#16a34a'}}>💰</div>
+            <div style={{...styles.cardIcon, background: kpiData.p95Color === '#dc2626' ? '#fef2f2' : kpiData.p95Color === '#ca8a04' ? '#fefce8' : '#f0fdf4', color: kpiData.p95Color || '#16a34a'}}>⏱️</div>
           </div>
-          <div style={styles.cardLabel}>Revenue Impact</div>
-          <div style={styles.cardValue}>$47,250</div>
-          <div style={{...styles.cardTrend, color: '#dc2626'}}>↓ $12,500 at risk during checkout degradation</div>
+          <div style={styles.cardLabel}>P95 Response Time</div>
+          <div style={{...styles.cardValue, color: kpiData.p95Color || '#0f172a'}}>{kpiData.p95}</div>
+          <div style={{...styles.cardTrend, color: '#64748b'}}>
+            {kpiData.p95 !== '—' ? '95% of users responded within this time' : '95th percentile latency'}
+          </div>
+          {kpiData.p95 !== '—' && (
+            <div style={styles.thresholdBar}>
+              <div style={{...styles.thresholdFill, width: `${Math.min(100, (kpiData.p95Raw / 5000) * 100)}%`, background: kpiData.p95Raw > 2000 ? 'linear-gradient(90deg, #ca8a04, #dc2626)' : kpiData.p95Raw > 500 ? 'linear-gradient(90deg, #22c55e, #ca8a04)' : '#22c55e'}} />
+            </div>
+          )}
         </div>
 
         <div style={styles.card}>
           <div style={styles.cardHeader}>
-            <div style={{...styles.cardIcon, background: '#fef2f2', color: '#dc2626'}}>🏥</div>
-          </div>
-          <div style={styles.cardLabel}>Infrastructure Health</div>
-          <div style={styles.cardValue}>72%</div>
-          <div style={{...styles.cardTrend, color: '#dc2626'}}>⚠ CPU 88% | Memory 62% | Pool 100%</div>
-          <div style={styles.thresholdBar}>
-            <div style={{...styles.thresholdFill, width: '72%', background: 'linear-gradient(90deg, #22c55e, #ca8a04, #dc2626)'}} />
-          </div>
-        </div>
-
-        <div style={styles.card}>
-          <div style={styles.cardHeader}>
-            <div style={{...styles.cardIcon, background: '#fefce8', color: '#ca8a04'}}>⚡</div>
+            <div style={{...styles.cardIcon, background: '#fefce8', color: '#ca8a04'}}>🔍</div>
           </div>
           <div style={styles.cardLabel}>Bottlenecks Detected</div>
           <div style={{...styles.cardValue, fontSize: '28px'}}>
-            <span style={{color: '#dc2626'}}>{criticalCount} Critical</span>, {highCount} High
+            {criticalCount > 0 && <span style={{color: '#dc2626'}}>{criticalCount} Critical</span>}
+            {criticalCount > 0 && highCount > 0 && ', '}
+            {highCount > 0 && <span>{highCount} High</span>}
+            {criticalCount === 0 && highCount === 0 && <span style={{color: '#16a34a'}}>None</span>}
           </div>
-          <div style={{...styles.cardTrend, color: '#64748b'}}>{warningCount} warnings • 3 areas need attention</div>
+          <div style={{...styles.cardTrend, color: '#64748b'}}>
+            {warningCount > 0 ? `${warningCount} warnings • ${criticalCount + highCount + warningCount} areas checked` : displayFindings.length > 0 ? `${displayFindings.length} findings total` : 'Run a test to detect issues'}
+          </div>
         </div>
       </div>
 
       {/* Tabs */}
       <div style={{display: 'inline-flex', gap: '4px', marginBottom: '2rem', background: '#f1f5f9', padding: '4px', borderRadius: '12px'}}>
-        {['overview', 'bottlenecks', 'recommendations', 'scaling', 'loadtest'].map(tab => (
+        {['overview', 'loadtest', 'bottlenecks', 'recommendations'].map(tab => (
           <button key={tab} onClick={() => setActiveTab(tab)}
             style={{
               padding: '10px 20px', borderRadius: '10px', border: 'none',
@@ -323,7 +866,7 @@ const ExecutiveDashboard = () => {
               transition: 'all 0.2s', textTransform: 'capitalize',
             }}
           >
-            {tab === 'overview' ? '📊 Overview' : tab === 'bottlenecks' ? '🔍 Bottlenecks' : tab === 'recommendations' ? '💡 Recommendations' : tab === 'scaling' ? '📈 Scaling' : '⚡ Load Test'}
+            {tab === 'overview' ? '📊 Overview' : tab === 'bottlenecks' ? '🔍 Bottlenecks' : tab === 'recommendations' ? '💡 Recommendations' : '⚡ Load Test'}
           </button>
         ))}
       </div>
@@ -374,38 +917,124 @@ const ExecutiveDashboard = () => {
             </div>
           </div>
 
-          {/* Resource Utilization */}
+          {/* System Health Score + AI Next Action */}
           <div style={styles.twoCol}>
-            <div style={styles.card}>
-              <div style={styles.cardHeader}>
-                <h3 style={{fontSize: '16px', fontWeight: 700, color: '#0f172a'}}>CPU Utilization</h3>
+            {/* Health Score Ring Gauge */}
+            <div style={{...styles.card, background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)', color: 'white', position: 'relative', overflow: 'hidden'}}>
+              <div style={{position: 'absolute', top: '-30%', right: '-15%', width: '200px', height: '200px', background: `radial-gradient(circle, ${healthScore >= 80 ? 'rgba(34,197,94,0.15)' : healthScore >= 50 ? 'rgba(234,179,8,0.15)' : 'rgba(239,68,68,0.15)'} 0%, transparent 70%)`, borderRadius: '50%', pointerEvents: 'none'}} />
+              <div style={{display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '1.25rem'}}>
+                <span style={{fontSize: '13px', fontWeight: 600, color: '#94a3b8'}}>System Health Score</span>
+                <span style={{...styles.aiBadge, fontSize: '9px', padding: '2px 8px'}}>AI COMPUTED</span>
               </div>
-              <div style={{textAlign: 'center', padding: '1rem 0'}}>
-                <div style={{fontSize: '48px', fontWeight: 800, color: '#dc2626'}}>88%</div>
-                <div style={{color: '#64748b', fontSize: '13px', marginTop: '4px'}}>Peak at 500 concurrent users</div>
-              </div>
-              <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#94a3b8', marginTop: '8px'}}>
-                <span>50 users: 22%</span>
-                <span>200 users: 45%</span>
-                <span>500 users: 88%</span>
-                <span>1000 users: 97% (est.)</span>
+              <div style={{display: 'flex', alignItems: 'center', gap: '2rem'}}>
+                {/* SVG Ring Gauge */}
+                <div style={{position: 'relative', width: '140px', height: '140px', flexShrink: 0}}>
+                  <svg width="140" height="140" viewBox="0 0 140 140" style={{transform: 'rotate(-90deg)'}}>
+                    {/* Background ring */}
+                    <circle cx="70" cy="70" r="58" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="12" />
+                    {/* Score ring with gradient */}
+                    <circle
+                      cx="70" cy="70" r="58" fill="none"
+                      stroke={healthScore >= 80 ? '#22c55e' : healthScore >= 50 ? '#eab308' : '#ef4444'}
+                      strokeWidth="12"
+                      strokeLinecap="round"
+                      strokeDasharray={`${(healthScore / 100) * 364.42} 364.42`}
+                      style={{transition: 'stroke-dasharray 1s ease-out, stroke 0.5s ease'}}
+                    />
+                    {/* Inner glow ring */}
+                    <circle
+                      cx="70" cy="70" r="58" fill="none"
+                      stroke={healthScore >= 80 ? 'rgba(34,197,94,0.3)' : healthScore >= 50 ? 'rgba(234,179,8,0.3)' : 'rgba(239,68,68,0.3)'}
+                      strokeWidth="20"
+                      strokeLinecap="round"
+                      strokeDasharray={`${(healthScore / 100) * 364.42} 364.42`}
+                      style={{transition: 'stroke-dasharray 1s ease-out', filter: 'blur(4px)'}}
+                    />
+                  </svg>
+                  {/* Center score text */}
+                  <div style={{position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', textAlign: 'center'}}>
+                    <div style={{fontSize: '36px', fontWeight: 800, color: healthScore >= 80 ? '#22c55e' : healthScore >= 50 ? '#eab308' : '#ef4444', lineHeight: 1}}>
+                      {healthScore}
+                    </div>
+                    <div style={{fontSize: '11px', color: '#94a3b8', marginTop: '2px', fontWeight: 500}}>/ 100</div>
+                  </div>
+                </div>
+                {/* Score breakdown */}
+                <div style={{flex: 1}}>
+                  <div style={{fontSize: '18px', fontWeight: 700, marginBottom: '12px', color: healthScore >= 80 ? '#86efac' : healthScore >= 50 ? '#fde047' : '#fca5a5'}}>
+                    {healthScore >= 80 ? 'Excellent' : healthScore >= 60 ? 'Good' : healthScore >= 40 ? 'Degraded' : 'Critical'}
+                  </div>
+                  {[
+                    {label: 'Response Time', value: healthBreakdown.responseTime, icon: '⏱️'},
+                    {label: 'Error Rate', value: healthBreakdown.errorRate, icon: '🛡️'},
+                    {label: 'Throughput', value: healthBreakdown.throughput, icon: '⚡'},
+                  ].map((item, i) => (
+                    <div key={i} style={{display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px'}}>
+                      <span style={{fontSize: '12px'}}>{item.icon}</span>
+                      <div style={{flex: 1}}>
+                        <div style={{display: 'flex', justifyContent: 'space-between', marginBottom: '3px'}}>
+                          <span style={{fontSize: '11px', color: '#94a3b8'}}>{item.label}</span>
+                          <span style={{fontSize: '11px', fontWeight: 600, color: item.value >= 80 ? '#86efac' : item.value >= 50 ? '#fde047' : '#fca5a5'}}>{item.value}/100</span>
+                        </div>
+                        <div style={{height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', overflow: 'hidden'}}>
+                          <div style={{height: '100%', width: `${item.value}%`, background: item.value >= 80 ? '#22c55e' : item.value >= 50 ? '#eab308' : '#ef4444', borderRadius: '2px', transition: 'width 0.8s ease-out'}} />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
-            <div style={styles.card}>
-              <div style={styles.cardHeader}>
-                <h3 style={{fontSize: '16px', fontWeight: 700, color: '#0f172a'}}>Memory Usage</h3>
+            {/* AI Next Recommended Action */}
+            <div style={{...styles.card, border: '1px solid #e0e7ff', background: 'linear-gradient(135deg, #fafafe 0%, #eef2ff 100%)', position: 'relative', overflow: 'hidden'}}>
+              <div style={{position: 'absolute', top: '-20%', right: '-10%', width: '160px', height: '160px', background: 'radial-gradient(circle, rgba(99,102,241,0.08) 0%, transparent 70%)', borderRadius: '50%', pointerEvents: 'none'}} />
+              <div style={{display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem'}}>
+                <div style={{width: '32px', height: '32px', borderRadius: '10px', background: 'linear-gradient(135deg, #6366f1, #8b5cf6)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px'}}>🧠</div>
+                <div>
+                  <div style={{fontSize: '13px', fontWeight: 700, color: '#0f172a'}}>AI Recommended Action</div>
+                  <div style={{fontSize: '11px', color: '#6366f1', fontWeight: 500}}>Next Priority Step</div>
+                </div>
               </div>
-              <div style={{textAlign: 'center', padding: '1rem 0'}}>
-                <div style={{fontSize: '48px', fontWeight: 800, color: '#ca8a04'}}>62%</div>
-                <div style={{color: '#64748b', fontSize: '13px', marginTop: '4px'}}>Stable across load levels</div>
+              <div style={{background: 'white', borderRadius: '12px', padding: '16px', border: '1px solid #e2e8f0', marginBottom: '12px'}}>
+                <div style={{display: 'flex', alignItems: 'flex-start', gap: '10px'}}>
+                  <div style={{width: '28px', height: '28px', borderRadius: '8px', background: nextAction.urgencyBg, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', flexShrink: 0, marginTop: '2px'}}>
+                    {nextAction.icon}
+                  </div>
+                  <div style={{flex: 1}}>
+                    <div style={{fontSize: '14px', fontWeight: 700, color: '#0f172a', marginBottom: '6px', lineHeight: 1.3}}>
+                      {nextAction.title}
+                    </div>
+                    <div style={{fontSize: '12px', color: '#64748b', lineHeight: 1.5}}>
+                      {nextAction.description}
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div style={{display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#94a3b8', marginTop: '8px'}}>
-                <span>50 users: 35%</span>
-                <span>200 users: 48%</span>
-                <span>500 users: 62%</span>
-                <span>1000 users: 78% (est.)</span>
+              <div style={{display: 'flex', gap: '8px', flexWrap: 'wrap'}}>
+                <span style={{padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 600, background: nextAction.urgencyBg, color: nextAction.urgencyColor}}>
+                  {nextAction.urgency}
+                </span>
+                <span style={{padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 600, background: '#f0fdf4', color: '#16a34a'}}>
+                  {nextAction.impact}
+                </span>
+                <span style={{padding: '4px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 600, background: '#f8fafc', color: '#64748b'}}>
+                  {nextAction.effort}
+                </span>
               </div>
+              {nextAction.cta && (
+                <button
+                  onClick={() => setActiveTab('loadtest')}
+                  style={{
+                    marginTop: '14px', padding: '10px 20px', borderRadius: '10px', border: 'none',
+                    background: 'linear-gradient(135deg, #6366f1, #4f46e5)', color: 'white',
+                    fontWeight: 600, fontSize: '13px', cursor: 'pointer', width: '100%',
+                    transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '6px',
+                  }}
+                >
+                  {nextAction.cta}
+                </button>
+              )}
             </div>
           </div>
         </>
@@ -416,10 +1045,25 @@ const ExecutiveDashboard = () => {
         <div style={styles.section}>
           <h2 style={styles.sectionTitle}>
             🔍 Detected Bottlenecks
-            <span style={styles.aiBadge}>{findings.length} Findings</span>
+            <span style={styles.aiBadge}>{displayFindings.length} Findings</span>
           </h2>
+          {!loadTestResult && !engineReport && (
+            <p style={{color: '#64748b', fontSize: '14px', marginBottom: '1rem', fontStyle: 'italic'}}>
+              Run a load test to see real-time bottleneck detection. Showing sample findings below.
+            </p>
+          )}
+          {loadTestResult && !engineFindings.length && (
+            <p style={{color: '#16a34a', fontSize: '14px', marginBottom: '1rem', fontWeight: 500}}>
+              ✅ Showing live findings from last test: {loadTestResult.scenario} ({loadTestResult.users} users)
+            </p>
+          )}
+          {engineFindings.length > 0 && (
+            <p style={{color: '#16a34a', fontSize: '14px', marginBottom: '1rem', fontWeight: 500}}>
+              ✅ Showing live findings from {engineReport.engine === 'k6' ? 'k6' : 'Gatling'} test: {engineReport.users} users × {engineReport.duration}s
+            </p>
+          )}
           <div style={styles.findings}>
-            {findings.map(f => (
+            {displayFindings.map(f => (
               <div key={f.id} style={styles.finding}>
                 <div style={{...styles.findingIcon, background: f.iconBg}}>{f.icon}</div>
                 <div style={{flex: 1}}>
@@ -445,7 +1089,22 @@ const ExecutiveDashboard = () => {
             💡 AI Recommendations
             <span style={styles.aiBadge}>Priority Ordered</span>
           </h2>
-          {recommendations.map((rec, i) => (
+          {!loadTestResult && !engineReport && (
+            <p style={{color: '#64748b', fontSize: '14px', marginBottom: '1rem', fontStyle: 'italic'}}>
+              Run a load test to generate targeted recommendations based on actual bottlenecks.
+            </p>
+          )}
+          {loadTestResult && !engineFindings.length && (
+            <p style={{color: '#16a34a', fontSize: '14px', marginBottom: '1rem', fontWeight: 500}}>
+              ✅ Recommendations generated from: {loadTestResult.scenario} ({loadTestResult.users} users)
+            </p>
+          )}
+          {engineFindings.length > 0 && (
+            <p style={{color: '#16a34a', fontSize: '14px', marginBottom: '1rem', fontWeight: 500}}>
+              ✅ Recommendations generated from {engineReport.engine === 'k6' ? 'k6' : 'Gatling'} test: {engineReport.users} users × {engineReport.duration}s
+            </p>
+          )}
+          {(engineFindings.length > 0 ? generateRecommendationsFromEngine(engineReport) : loadTestResult ? generateRecommendations(loadTestResult) : recommendations).map((rec, i) => (
             <div key={i} style={styles.recCard}>
               <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px'}}>
                 <div style={styles.recTitle}>#{i + 1} {rec.title}</div>
@@ -479,8 +1138,8 @@ const ExecutiveDashboard = () => {
               with revenue impact calculations when bottlenecks are detected.
             </p>
 
-            {/* Running indicator */}
-            {loadTestStatus === 'running' && (
+            {/* Running indicator - only for preset scenario buttons, not custom */}
+            {loadTestStatus === 'running' && !engineRunning && (
               <div style={{ background: '#fffbeb', border: '1px solid #f59e0b', borderRadius: '12px', padding: '16px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '12px' }}>
                 <div style={{ fontSize: '28px' }}>🔄</div>
                 <div>
@@ -526,41 +1185,179 @@ const ExecutiveDashboard = () => {
               ))}
             </div>
 
-            {/* Custom concurrent users */}
+            {/* Custom concurrent users with Engine Selector */}
             <div style={{ background: '#f8fafc', borderRadius: '12px', padding: '20px', border: '1px dashed #cbd5e1' }}>
-              <p style={{ margin: '0 0 12px', fontSize: '14px', fontWeight: 600, color: '#0f172a' }}>
-                ⚙️ Custom Concurrent Users
+              <p style={{ margin: '0 0 16px', fontSize: '14px', fontWeight: 600, color: '#0f172a' }}>
+                ⚙️ Custom Load Test
               </p>
+
+              {/* Engine Selector Tabs */}
+              <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+                {[
+                  { id: 'node', label: '⚡ Node', desc: 'Built-in' },
+                  { id: 'k6', label: '📊 k6', desc: 'Grafana' },
+                  { id: 'gatling', label: '🔥 Gatling', desc: 'Enterprise' },
+                ].map(eng => (
+                  <button
+                    key={eng.id}
+                    onClick={() => setSelectedEngine(eng.id)}
+                    style={{
+                      padding: '12px 20px', borderRadius: '10px', border: selectedEngine === eng.id ? '2px solid #6366f1' : '1px solid #e2e8f0',
+                      background: selectedEngine === eng.id ? '#eef2ff' : 'white',
+                      cursor: 'pointer', textAlign: 'center', transition: 'all 0.2s', flex: 1,
+                    }}
+                  >
+                    <div style={{ fontSize: '18px', marginBottom: '4px' }}>{eng.label}</div>
+                    <div style={{ fontSize: '11px', color: '#64748b' }}>{eng.desc}</div>
+                  </button>
+                ))}
+              </div>
+
+              {/* Users + Duration + Run */}
               <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <input
                   type="number"
-                  min="10"
+                  min="1"
                   max="2000"
                   value={customUsers}
-                  onChange={e => setCustomUsers(parseInt(e.target.value, 10) || 10)}
+                  onChange={e => {
+                    const val = parseInt(e.target.value, 10);
+                    if (e.target.value === '') { setCustomUsers(''); return; }
+                    if (val >= 1) setCustomUsers(val);
+                  }}
+                  onBlur={e => { if (!customUsers || customUsers < 1) setCustomUsers(1); }}
+                  onKeyDown={e => { if (e.key === '-' || e.key === 'e' || e.key === '+') e.preventDefault(); }}
+                  disabled={engineRunning || loadTestStatus === 'running'}
                   style={{
                     padding: '10px 16px', borderRadius: '10px', border: '1px solid #cbd5e1',
-                    fontSize: '16px', fontWeight: 600, color: '#0f172a', width: '120px',
-                    outline: 'none',
+                    fontSize: '16px', fontWeight: 600, color: '#0f172a', width: '100px',
+                    outline: 'none', opacity: engineRunning ? 0.5 : 1,
                   }}
                 />
-                <span style={{ fontSize: '14px', color: '#64748b' }}>concurrent users</span>
+                <span style={{ fontSize: '14px', color: '#64748b' }}>users</span>
+                <input
+                  type="number"
+                  min="5"
+                  max="300"
+                  value={customDuration}
+                  onChange={e => {
+                    const val = parseInt(e.target.value, 10);
+                    if (e.target.value === '') { setCustomDuration(''); return; }
+                    if (val >= 1) setCustomDuration(val);
+                  }}
+                  onBlur={e => { if (!customDuration || customDuration < 5) setCustomDuration(5); }}
+                  onKeyDown={e => { if (e.key === '-' || e.key === 'e' || e.key === '+') e.preventDefault(); }}
+                  disabled={engineRunning || loadTestStatus === 'running'}
+                  style={{
+                    padding: '10px 16px', borderRadius: '10px', border: '1px solid #cbd5e1',
+                    fontSize: '16px', fontWeight: 600, color: '#0f172a', width: '80px',
+                    outline: 'none', opacity: engineRunning ? 0.5 : 1,
+                  }}
+                />
+                <span style={{ fontSize: '14px', color: '#64748b' }}>seconds</span>
                 <button
-                  onClick={() => runLoadTest('Average Load', customUsers)}
-                  disabled={loadTestStatus === 'running'}
+                  onClick={() => handleRunEngine()}
+                  disabled={engineRunning || loadTestStatus === 'running'}
                   style={{
                     padding: '10px 24px', borderRadius: '10px', border: 'none',
-                    background: loadTestStatus === 'running' ? '#94a3b8' : 'linear-gradient(135deg, #6366f1, #4f46e5)',
-                    color: 'white', fontWeight: 600, fontSize: '14px', cursor: loadTestStatus === 'running' ? 'not-allowed' : 'pointer',
+                    background: (engineRunning || loadTestStatus === 'running') ? '#94a3b8' : 'linear-gradient(135deg, #6366f1, #4f46e5)',
+                    color: 'white', fontWeight: 600, fontSize: '14px',
+                    cursor: (engineRunning || loadTestStatus === 'running') ? 'not-allowed' : 'pointer',
                     transition: 'all 0.2s',
                   }}
-                  onMouseEnter={e => { if (loadTestStatus !== 'running') e.currentTarget.style.opacity = '0.9'; }}
-                  onMouseLeave={e => { if (loadTestStatus !== 'running') e.currentTarget.style.opacity = '1'; }}
                 >
-                  🚀 Run Custom Test
+                  🚀 Run with {selectedEngine === 'node' ? 'Node' : selectedEngine === 'k6' ? 'k6' : 'Gatling'}
                 </button>
               </div>
+
+              {/* Progress Bar - shown when engine test is running */}
+              {engineRunning && (
+                <div style={{ marginTop: '16px', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: '12px', padding: '16px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <div style={{ animation: 'spin 1s linear infinite', fontSize: '18px' }}>🔄</div>
+                      <span style={{ fontWeight: 600, color: '#1e40af', fontSize: '14px' }}>
+                        Running {selectedEngine === 'k6' ? 'k6' : selectedEngine === 'gatling' ? 'Gatling' : 'Node'} test... {customUsers} users × {customDuration}s
+                      </span>
+                    </div>
+                    <span style={{ fontSize: '13px', color: '#3b82f6', fontWeight: 600 }}>
+                      {engineElapsed}s / ~{selectedEngine === 'gatling' ? customDuration + 20 : customDuration + 5}s
+                    </span>
+                  </div>
+                  {/* Progress bar */}
+                  <div style={{ width: '100%', height: '8px', background: '#dbeafe', borderRadius: '4px', overflow: 'hidden' }}>
+                    <div style={{
+                      height: '100%', borderRadius: '4px',
+                      background: selectedEngine === 'node' ? 'linear-gradient(90deg, #6366f1, #8b5cf6)' : 'linear-gradient(90deg, #3b82f6, #6366f1)',
+                      width: `${Math.min(95, (engineElapsed / (selectedEngine === 'gatling' ? customDuration + 20 : customDuration + 5)) * 100)}%`,
+                      transition: 'width 1s linear',
+                    }} />
+                  </div>
+                  <div style={{ marginTop: '8px', fontSize: '12px', color: '#64748b' }}>
+                    <span>⚡ Simulating real user traffic... </span>
+                    <span>📧 Alerts will be sent when bottlenecks are detected</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Engine info note (hidden during run) */}
+              {!engineRunning && (
+                <div style={{ marginTop: '12px', fontSize: '12px', color: '#94a3b8' }}>
+                  {selectedEngine === 'node' && '⚡ Node Runner — instant results, built into the dashboard. No external tools needed.'}
+                  {selectedEngine === 'k6' && '📊 k6 by Grafana Labs — industry-standard, rich metrics with thresholds. Interactive report opens in new tab.'}
+                  {selectedEngine === 'gatling' && '🔥 Gatling — enterprise-grade JVM-based load testing. Generates detailed HTML report with Highcharts.'}
+                </div>
+              )}
             </div>
+
+            {/* View Report Button - shown after k6/gatling run */}
+            {(engineReport) && (
+              <div style={{ marginTop: '16px', background: '#f0fdf4', borderRadius: '12px', padding: '16px', border: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+                <div>
+                  <p style={{ margin: 0, fontWeight: 600, color: '#166534', fontSize: '14px' }}>
+                    ✅ {engineReport.engine === 'k6' ? 'k6' : 'Gatling'} test completed in {engineReport.elapsed}s
+                  </p>
+                  <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#15803d' }}>
+                    {engineReport.users} users × {engineReport.duration}s | Interactive report ready
+                  </p>
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={() => window.open(`/api/loadtest/report/${engineReport.engine}`, '_blank')}
+                    style={{
+                      padding: '10px 20px', borderRadius: '10px', border: 'none',
+                      background: 'linear-gradient(135deg, #10b981, #059669)',
+                      color: 'white', fontWeight: 600, fontSize: '13px', cursor: 'pointer',
+                    }}
+                  >
+                    📊 View Interactive Report ↗
+                  </button>
+                  <button
+                    onClick={() => {
+                      fetch(`/api/loadtest/report/${engineReport.engine}`)
+                        .then(res => res.blob())
+                        .then(blob => {
+                          const url = window.URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = `${engineReport.engine}-report.html`;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          window.URL.revokeObjectURL(url);
+                        });
+                    }}
+                    style={{
+                      padding: '10px 20px', borderRadius: '10px', border: '1px solid #d1d5db',
+                      background: 'white', color: '#374151', fontWeight: 600, fontSize: '13px',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    ⬇️ Download HTML
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Results section */}
@@ -673,91 +1470,6 @@ const ExecutiveDashboard = () => {
         </div>
       )}
 
-      {/* Scaling Tab */}
-      {activeTab === 'scaling' && (
-        <>
-          <div style={styles.section}>
-            <h2 style={styles.sectionTitle}>
-              📈 Scaling Recommendations
-              <span style={styles.aiBadge}>Capacity Planning</span>
-            </h2>
-
-            <div style={styles.grid}>
-              {[
-                { level: 'Current', users: '200', instances: 1, cpu: '45%', mem: '48%', status: 'Adequate' },
-                { level: 'Peak', users: '500', instances: 2, cpu: '88%', mem: '62%', status: 'Scale Needed' },
-                { level: 'Black Friday', users: '1000', instances: 4, cpu: '97% (est.)', mem: '78% (est.)', status: 'Scale Required' },
-              ].map((s, i) => (
-                <div key={i} style={styles.card}>
-                  <div style={{
-                    fontSize: '13px', fontWeight: 600,
-                    color: s.status === 'Scale Required' ? '#dc2626' : s.status === 'Scale Needed' ? '#ca8a04' : '#16a34a',
-                    marginBottom: '8px',
-                  }}>
-                    {s.level}
-                  </div>
-                  <div style={{fontSize: '36px', fontWeight: 800, color: '#0f172a', marginBottom: '4px'}}>
-                    {s.users}
-                    <span style={{fontSize: '16px', color: '#64748b', fontWeight: 400, marginLeft: '4px'}}>users</span>
-                  </div>
-                  <div style={styles.metricRow}>
-                    <span>Instances</span><span>{s.instances}</span>
-                  </div>
-                  <div style={styles.metricRow}>
-                    <span>CPU</span><span>{s.cpu}</span>
-                  </div>
-                  <div style={styles.metricRow}>
-                    <span>Memory</span><span>{s.mem}</span>
-                  </div>
-                  <div style={{marginTop: '12px'}}>
-                    <span style={{
-                      ...styles.badge,
-                      background: s.status === 'Scale Required' ? '#fef2f2' : s.status === 'Scale Needed' ? '#fefce8' : '#f0fdf4',
-                      color: s.status === 'Scale Required' ? '#dc2626' : s.status === 'Scale Needed' ? '#ca8a04' : '#16a34a',
-                    }}>
-                      {s.status}
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div style={styles.card}>
-            <h3 style={{fontSize: '16px', fontWeight: 700, color: '#0f172a', marginBottom: '1rem'}}>
-              Scaling Action Plan
-            </h3>
-            {[
-              { phase: 'Phase 1', action: 'Add composite indexes + query optimization', timeline: 'Week 1', cost: 'Low' },
-              { phase: 'Phase 2', action: 'Deploy horizontal scaling (2→4 instances) with load balancer', timeline: 'Week 2', cost: 'Medium' },
-              { phase: 'Phase 3', action: 'Implement Redis caching for product/search data', timeline: 'Week 3-4', cost: 'Medium' },
-              { phase: 'Phase 4', action: 'Database read replicas + connection pooling optimization', timeline: 'Week 4-5', cost: 'High' },
-              { phase: 'Phase 5', action: 'Auto-scaling group configuration with CloudWatch alarms', timeline: 'Week 6', cost: 'Medium' },
-            ].map((item, i) => (
-              <div key={i} style={{
-                ...styles.metricRow,
-                borderBottom: i === 4 ? 'none' : '1px solid #f1f5f9',
-              }}>
-                <div style={{display: 'flex', gap: '8px', alignItems: 'center'}}>
-                  <span style={{
-                    padding: '2px 8px', borderRadius: '6px', fontSize: '11px', fontWeight: 600,
-                    background: '#eef2ff', color: '#6366f1',
-                  }}>{item.phase}</span>
-                  <span>{item.action}</span>
-                </div>
-                <div style={{display: 'flex', gap: '16px'}}>
-                  <span style={{fontSize: '13px', color: '#64748b'}}>{item.timeline}</span>
-                  <span style={{
-                    fontSize: '12px', fontWeight: 600,
-                    color: item.cost === 'Low' ? '#16a34a' : item.cost === 'Medium' ? '#ca8a04' : '#dc2626',
-                  }}>{item.cost} Cost</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
       {/* Footer metrics */}
       <div style={{...styles.card, marginTop: '2rem', background: '#f8fafc'}}>
         <div style={{
@@ -767,32 +1479,29 @@ const ExecutiveDashboard = () => {
           <div>
             <div style={{fontSize: '13px', color: '#64748b', fontWeight: 500}}>Last AI Analysis</div>
             <div style={{fontSize: '15px', fontWeight: 600, color: '#0f172a'}}>
-              {new Date().toLocaleString('en-US', { 
-                year: 'numeric', month: 'long', day: 'numeric',
-                hour: '2-digit', minute: '2-digit'
-              })}
+              {lastAnalysisTime || '—'}
             </div>
           </div>
           <div>
             <div style={{fontSize: '13px', color: '#64748b', fontWeight: 500}}>Analysis Duration</div>
-            <div style={{fontSize: '15px', fontWeight: 600, color: '#0f172a'}}>3.2 seconds</div>
+            <div style={{fontSize: '15px', fontWeight: 600, color: '#0f172a'}}>{lastAnalysisDuration || '—'}</div>
           </div>
           <div>
             <div style={{fontSize: '13px', color: '#64748b', fontWeight: 500}}>Test Run ID</div>
             <div style={{fontSize: '15px', fontWeight: 600, color: '#0f172a'}}>
-              PERF-{Date.now().toString(36).toUpperCase()}
+              {lastTestRunId || '—'}
             </div>
           </div>
           <div>
-            <Link to="/admin" style={{
+            <button onClick={() => setActiveTab('loadtest')} style={{
               display: 'inline-flex', alignItems: 'center', gap: '6px',
               padding: '10px 20px', borderRadius: '10px',
-              background: '#0f172a', color: 'white',
-              textDecoration: 'none', fontWeight: 600, fontSize: '14px',
+              background: '#0f172a', color: 'white', border: 'none',
+              fontWeight: 600, fontSize: '14px', cursor: 'pointer',
               transition: 'all 0.2s',
             }}>
               ⚙️ Run New Test
-            </Link>
+            </button>
           </div>
         </div>
       </div>

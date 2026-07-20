@@ -205,9 +205,13 @@ const ProductDetail = () => {
       <Link to="/products" style={styles.back}>← Back to Products</Link>
 
       <div style={styles.layout}>
-        <div style={styles.imageContainer}>
-          {product.name.charAt(0)}
-        </div>
+        {product.image_url ? (
+          <img src={product.image_url} alt={product.name} style={{width: '100%', height: '400px', objectFit: 'cover', borderRadius: '20px', display: 'block', background: 'linear-gradient(135deg, #f1f5f9, #e2e8f0)'}} />
+        ) : (
+          <div style={styles.imageContainer}>
+            {product.name.charAt(0)}
+          </div>
+        )}
         <div style={styles.info}>
           <div style={styles.category}>{product.category_name}</div>
           <h1 style={styles.name}>{product.name}</h1>
@@ -238,9 +242,13 @@ const ProductDetail = () => {
           <div style={styles.relatedGrid}>
             {product.related_products.map(rp => (
               <Link to={`/products/${rp.slug}`} key={rp.id} style={styles.relatedCard}>
-                <div style={{height: '120px', background: '#f1f5f9', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', color: '#94a3b8'}}>
-                  {rp.name.charAt(0)}
-                </div>
+                {rp.image_url ? (
+                  <img src={rp.image_url} alt={rp.name} style={{width: '100%', height: '120px', objectFit: 'cover', borderRadius: '8px', display: 'block'}} />
+                ) : (
+                  <div style={{height: '120px', background: '#f1f5f9', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '28px', color: '#94a3b8'}}>
+                    {rp.name.charAt(0)}
+                  </div>
+                )}
                 <div style={styles.relatedName}>{rp.name}</div>
                 <div style={styles.relatedPrice}>${rp.price}</div>
               </Link>

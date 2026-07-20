@@ -241,7 +241,11 @@ const Cart = () => {
           <div style={styles.items}>
             {cart.items.map(item => (
               <div key={item.id} style={styles.item}>
-                <div style={styles.itemImage}>{item.name.charAt(0)}</div>
+                {item.image_url ? (
+                  <img src={item.image_url} alt={item.name} style={{width: '80px', height: '80px', borderRadius: '12px', objectFit: 'cover', display: 'block', flexShrink: 0}} />
+                ) : (
+                  <div style={styles.itemImage}>{item.name.charAt(0)}</div>
+                )}
                 <div style={styles.itemInfo}>
                   <Link to={`/products/${item.slug}`} style={{textDecoration: 'none'}}>
                     <div style={styles.itemName}>{item.name}</div>

@@ -1,25 +1,18 @@
 {
   "name": "ai-performance-testing-assistant",
   "version": "1.0.0",
-  "description": "AI-Powered Performance Testing Assistant for E-Commerce Platform",
-  "private": true,
+  "description": "AI-Powered Performance Testing Assistant - E-Commerce Demo Platform",
   "scripts": {
-    "install:all": "cd backend && npm install && cd ../frontend && npm install",
-    "dev:backend": "cd backend && npm run dev",
-    "dev:frontend": "cd frontend && npm start",
-    "dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\"",
-    "db:migrate": "cd backend && npm run db:migrate",
-    "db:seed": "cd backend && npm run db:seed",
-    "test:k6:smoke": "k6 run performance-tests/k6/smoke_test.js",
-    "test:k6:average": "k6 run performance-tests/k6/average_load_test.js",
-    "test:k6:peak": "k6 run performance-tests/k6/peak_load_test.js",
-    "test:k6:blackfriday": "k6 run performance-tests/k6/black_friday_test.js",
-    "analyze": "cd ai-orchestrator && node analyze.js",
-    "dashboard": "cd frontend && npm run build",
-    "start": "npm run dev",
-    "setup": "npm install && npm run install:all && npm run db:migrate && npm run db:seed"
+    "install:backend": "cd backend && npm install",
+    "install:frontend": "cd frontend && npm install",
+    "build:frontend": "cd frontend && npm run build",
+    "build": "npm run install:backend && npm run install:frontend && npm run build:frontend",
+    "start": "cd backend && node server.js",
+    "dev": "concurrently \"cd backend && npm run dev\" \"cd frontend && npm start\""
   },
-  "devDependencies": {
-    "concurrently": "^8.2.2"
-  }
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": ["performance-testing", "ai", "e-commerce", "load-testing"],
+  "license": "MIT"
 }
