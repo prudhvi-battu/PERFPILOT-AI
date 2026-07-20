@@ -78,15 +78,6 @@ The AI Performance Testing Assistant automates the entire performance testing li
 ```bash
 docker-compose up -d
 ```
-
-| Service     | URL                          | Credentials       |
-|-------------|------------------------------|-------------------|
-| Frontend    | http://localhost:3000         | —                 |
-| API         | http://localhost:5000         | —                 |
-| Swagger     | http://localhost:5000/api-docs| —                 |
-| Prometheus  | http://localhost:9090         | —                 |
-| Grafana     | http://localhost:3000         | admin / admin     |
-
 ### Manual Setup
 
 ```bash
