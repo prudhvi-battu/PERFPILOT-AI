@@ -66,13 +66,23 @@ const styles = {
   cardImage: {
     width: '100%',
     height: '200px',
+    objectFit: 'cover',
+    borderTopLeftRadius: '16px',
+    borderTopRightRadius: '16px',
+    display: 'block',
+    background: 'linear-gradient(135deg, #f1f5f9, #e2e8f0)',
+  },
+  cardImageFallback: {
+    width: '100%',
+    height: '200px',
     background: 'linear-gradient(135deg, #f1f5f9, #e2e8f0)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     fontSize: '48px',
     color: '#94a3b8',
-    objectFit: 'cover',
+    borderTopLeftRadius: '16px',
+    borderTopRightRadius: '16px',
   },
   cardBody: {
     padding: '1.25rem',
@@ -201,9 +211,13 @@ const Products = () => {
           <div style={styles.grid}>
             {products.map(product => (
               <Link to={`/products/${product.slug}`} key={product.id} style={styles.card}>
-                <div style={styles.cardImage}>
-                  {product.name.charAt(0)}
-                </div>
+                {product.image_url ? (
+                  <img src={product.image_url} alt={product.name} style={styles.cardImage} />
+                ) : (
+                  <div style={styles.cardImageFallback}>
+                    {product.name.charAt(0)}
+                  </div>
+                )}
                 <div style={styles.cardBody}>
                   <div style={styles.cardCategory}>{product.category_name}</div>
                   <div style={styles.cardTitle}>{product.name}</div>

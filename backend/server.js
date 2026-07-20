@@ -1,10 +1,11 @@
-require('dotenv').config({ override: true });
+require('dotenv').config({ path: require('path').join(__dirname, '.env'), override: true });
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 const morgan = require('morgan');
 const rateLimit = require('express-rate-limit');
+const path = require('path');
 const swaggerUi = require('swagger-ui-express');
 const swaggerSpec = require('./swagger');
 const { metricsMiddleware, metricsEndpoint } = require('./middleware/metrics');
@@ -15,10 +16,13 @@ const bcrypt = require('bcryptjs');
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-app.use(helmet());
+app.use(helmet({
+  contentSecurityPolicy: false,
+  crossOriginEmbedderPolicy: false,
+}));
 app.use(compression());
 app.use(cors({ origin: '*', credentials: true }));
-const limiter = rateLimit({ windowMs: 60000, max: 1000, message: { error: 'Too many requests' } });
+const limiter = rateLimit({ windowMs: 60000, max: 10000, message: { error: 'Too many requests' }, skip: (req) => req.path === '/api/loadtest/status' || req.path === '/api/loadtest/engine-status' });
 app.use('/api/', limiter);
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
@@ -29,6 +33,13 @@ app.use(metricsMiddleware);
 app.get('/api/health', (req, res) => {
   res.json({ status: 'healthy', timestamp: new Date().toISOString(), uptime: process.uptime() });
 });
+
+// Serve Gatling report static files (JS/CSS/images) without CSP
+app.use('/gatling-report', (req, res, next) => {
+  res.removeHeader('Content-Security-Policy');
+  res.setHeader('Content-Security-Policy', "default-src * 'unsafe-inline' 'unsafe-eval'; script-src * 'unsafe-inline' 'unsafe-eval'; style-src * 'unsafe-inline'; img-src * data:");
+  next();
+}, express.static(path.join(__dirname, '..', 'reports', 'gatling-latest')));
 
 // Swagger
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, { explorer: true, customCss: '.swagger-ui .topbar { display: none }', customSiteTitle: 'E-Commerce API - Performance Testing' }));
@@ -209,7 +220,18 @@ async function start() {
 
     // Error handling (must be after ALL routes)
     app.use(errorHandler);
-    app.use((req, res) => { res.status(404).json({ error: 'Route not found' }); });
+
+    // Serve React frontend in production
+    const frontendBuild = path.join(__dirname, '..', 'frontend', 'build');
+    if (require('fs').existsSync(frontendBuild)) {
+      app.use(express.static(frontendBuild));
+      app.get('*', (req, res) => {
+        res.sendFile(path.join(frontendBuild, 'index.html'));
+      });
+      console.log('✓ Serving React frontend from', frontendBuild);
+    } else {
+      app.use((req, res) => { res.status(404).json({ error: 'Route not found' }); });
+    }
 
     const server = app.listen(PORT, () => {
       console.log('╔══════════════════════════════════════════════════════╗');

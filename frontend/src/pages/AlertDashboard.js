@@ -255,7 +255,7 @@ function AlertDashboard() {
     const connectSSE = () => {
       if (sseRef.current) sseRef.current.close();
       const token = localStorage.getItem('token');
-      const apiUrl = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+      const apiUrl = process.env.REACT_APP_API_URL || '';
       const eventSource = new EventSource(`${apiUrl}/api/alerts/stream`);
       
       eventSource.onmessage = (event) => {

@@ -18,7 +18,7 @@ export default function useLoadTest() {
     };
   }, []);
 
-  const runLoadTest = useCallback(async (scenario, customUsers = null, onComplete = null) => {
+  const runLoadTest = useCallback(async (scenario, customUsers = null, customDuration = null, onComplete = null) => {
     const token = localStorage.getItem('token');
     let maxPollTimeout = null;
     let maxPollReached = false;
@@ -33,9 +33,12 @@ export default function useLoadTest() {
     }
 
     try {
-      // Build request body - allow custom users override
-      const safeUsers = customUsers ? Math.max(10, Math.min(customUsers, 2000)) : null;
-      const body = safeUsers ? { scenario, users: safeUsers } : { scenario };
+      // Build request body - allow custom users and duration override
+      const safeUsers = customUsers ? Math.max(1, Math.min(customUsers, 2000)) : null;
+      const safeDuration = customDuration ? Math.max(5000, Math.min(customDuration, 300000)) : null;
+      const body = { scenario };
+      if (safeUsers) body.users = safeUsers;
+      if (safeDuration) body.duration = safeDuration;
 
       await api.post('/api/loadtest/run', body, {
         headers: { Authorization: `Bearer ${token}` },
