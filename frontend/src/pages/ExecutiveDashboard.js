@@ -311,182 +311,10 @@ function generateRecommendations(result) {
   return recs;
 }
 
-// Generate findings from k6/Gatling engine report
-function generateFindingsFromEngine(report) {
-  if (!report || report.error) return [];
-  const findings = [];
-  let id = 1;
-
-  // k6 report has summary.metrics
-  if (report.engine === 'k6' && report.summary) {
-    const metrics = report.summary.metrics || {};
-    const httpDuration = metrics.http_req_duration || {};
-    const httpFailed = metrics.http_req_failed || {};
-    const httpReqs = metrics.http_reqs || {};
-
-    const p95 = httpDuration['p(95)'] || 0;
-    const failRate = ((httpFailed.value || 0) * 100);
-    const rps = httpReqs.rate || 0;
-
-    if (failRate > 30) {
-      findings.push({
-        id: id++, type: 'critical', icon: '🔴', iconBg: '#fef2f2',
-        title: `High Error Rate: ${failRate.toFixed(1)}% requests failed`,
-        description: `${failRate.toFixed(1)}% of requests failed during k6 test with ${report.users} users × ${report.duration}s. SQLite write contention causes cascading failures under concurrent load.`,
-        severity: 'Critical', severityColor: '#dc2626', severityBg: '#fef2f2',
-        metric: `Error Rate: ${failRate.toFixed(1)}% | Engine: k6`,
-      });
-    } else if (failRate > 10) {
-      findings.push({
-        id: id++, type: 'high', icon: '🟠', iconBg: '#fff7ed',
-        title: `Elevated Error Rate: ${failRate.toFixed(1)}%`,
-        description: `${failRate.toFixed(1)}% of requests failed with ${report.users} concurrent users.`,
-        severity: 'High', severityColor: '#ea580c', severityBg: '#fff7ed',
-        metric: `Error Rate: ${failRate.toFixed(1)}%`,
-      });
-    }
-
-    if (p95 > 5000) {
-      findings.push({
-        id: id++, type: 'critical', icon: '🔴', iconBg: '#fef2f2',
-        title: `P95 Response Time: ${(p95/1000).toFixed(1)}s (Critical)`,
-        description: `95th percentile at ${(p95/1000).toFixed(1)}s. Severe delays for ${report.users} concurrent users.`,
-        severity: 'Critical', severityColor: '#dc2626', severityBg: '#fef2f2',
-        metric: `P95: ${p95.toFixed(0)}ms | RPS: ${rps.toFixed(1)}/s`,
-      });
-    } else if (p95 > 2000) {
-      findings.push({
-        id: id++, type: 'high', icon: '🟠', iconBg: '#fff7ed',
-        title: `P95 Response Time: ${(p95/1000).toFixed(1)}s (Degraded)`,
-        description: `Response times elevated at the 95th percentile under ${report.users} users.`,
-        severity: 'High', severityColor: '#ea580c', severityBg: '#fff7ed',
-        metric: `P95: ${p95.toFixed(0)}ms`,
-      });
-    } else if (p95 > 500) {
-      findings.push({
-        id: id++, type: 'warning', icon: '🟡', iconBg: '#fefce8',
-        title: `P95 Response Time: ${p95.toFixed(0)}ms`,
-        description: `Slightly elevated but within acceptable range for ${report.users} users.`,
-        severity: 'Warning', severityColor: '#ca8a04', severityBg: '#fefce8',
-        metric: `P95: ${p95.toFixed(0)}ms`,
-      });
-    }
-
-    if (rps > 0 && rps < report.users * 0.3) {
-      findings.push({
-        id: id++, type: 'high', icon: '🟠', iconBg: '#fff7ed',
-        title: `Low Throughput: ${rps.toFixed(1)} req/s`,
-        description: `Expected higher throughput for ${report.users} users. Server is saturated.`,
-        severity: 'High', severityColor: '#ea580c', severityBg: '#fff7ed',
-        metric: `Throughput: ${rps.toFixed(1)} req/s`,
-      });
-    }
-
-    if (findings.length === 0) {
-      findings.push({
-        id: id++, type: 'info', icon: '✅', iconBg: '#f0fdf4',
-        title: 'All Systems Healthy',
-        description: `k6 test passed. ${report.users} users handled with ${(100 - failRate).toFixed(1)}% success rate, P95 ${p95.toFixed(0)}ms.`,
-        severity: 'Info', severityColor: '#16a34a', severityBg: '#f0fdf4',
-        metric: `Success: ${(100 - failRate).toFixed(1)}% | P95: ${p95.toFixed(0)}ms`,
-      });
-    }
-  }
-
-  // Gatling report (basic — we don't parse the simulation.log, just show completion status)
-  if (report.engine === 'gatling') {
-    findings.push({
-      id: id++, type: 'info', icon: '🔥', iconBg: '#fff7ed',
-      title: `Gatling Test Completed: ${report.users} users × ${report.duration}s`,
-      description: `Gatling simulation finished in ${report.elapsed}s. View the full interactive Gatling HTML report for detailed per-request breakdown, response time charts, and error analysis.`,
-      severity: 'Info', severityColor: '#ea580c', severityBg: '#fff7ed',
-      metric: `Duration: ${report.elapsed}s | View full report for details`,
-    });
-  }
-
-  return findings;
-}
-
-// Generate recommendations from k6/Gatling engine report
-function generateRecommendationsFromEngine(report) {
-  if (!report) return [];
-  const recs = [];
-
-  if (report.engine === 'k6' && report.summary) {
-    const metrics = report.summary.metrics || {};
-    const httpDuration = metrics.http_req_duration || {};
-    const httpFailed = metrics.http_req_failed || {};
-    const p95 = httpDuration['p(95)'] || 0;
-    const failRate = ((httpFailed.value || 0) * 100);
-
-    if (failRate > 30) {
-      recs.push({
-        title: 'Migrate from SQLite to PostgreSQL',
-        description: `${failRate.toFixed(0)}% failure rate from k6 confirms SQLite single-writer lock is the bottleneck. PostgreSQL handles concurrent writes natively.`,
-        impact: 'High Impact', impactColor: '#16a34a', impactBg: '#f0fdf4', effort: 'Medium Effort',
-      });
-      recs.push({
-        title: 'Implement Connection Pooling',
-        description: 'Use PgBouncer or built-in pool (min 20, max 100). Prevents connection exhaustion at scale.',
-        impact: 'High Impact', impactColor: '#16a34a', impactBg: '#f0fdf4', effort: 'Low Effort',
-      });
-    }
-
-    if (p95 > 2000) {
-      recs.push({
-        title: 'Add Database Indexes',
-        description: `k6 shows P95 of ${(p95/1000).toFixed(1)}s. Add composite indexes on products(category_id, price) and orders(user_id, created_at).`,
-        impact: 'High Impact', impactColor: '#16a34a', impactBg: '#f0fdf4', effort: 'Low Effort',
-      });
-    }
-
-    if (p95 > 500) {
-      recs.push({
-        title: 'Add Redis Caching',
-        description: 'Cache product listings and search results with 60s TTL. Reduces DB load on read-heavy endpoints.',
-        impact: 'Medium Impact', impactColor: '#ca8a04', impactBg: '#fefce8', effort: 'Medium Effort',
-      });
-    }
-
-    if (failRate > 10) {
-      recs.push({
-        title: 'Implement Retry with Backoff',
-        description: 'Add client-side retry logic for transient DB lock errors on checkout and cart operations.',
-        impact: 'Medium Impact', impactColor: '#ca8a04', impactBg: '#fefce8', effort: 'Low Effort',
-      });
-    }
-
-    if (recs.length === 0) {
-      recs.push({
-        title: 'System Performing Well',
-        description: `No critical issues at ${report.users} users. Try scaling to 50+ users to find the breaking point.`,
-        impact: 'Info', impactColor: '#2563eb', impactBg: '#eff6ff', effort: 'N/A',
-      });
-    }
-  }
-
-  if (report.engine === 'gatling') {
-    recs.push({
-      title: 'Review Gatling HTML Report',
-      description: 'Click "View Interactive Report" for per-request response time distribution, active users timeline, and error breakdown with Highcharts.',
-      impact: 'Info', impactColor: '#2563eb', impactBg: '#eff6ff', effort: 'N/A',
-    });
-    recs.push({
-      title: 'Compare with k6 Results',
-      description: `Run the same ${report.users}-user test with k6 to cross-validate findings. Different engines may reveal different bottlenecks.`,
-      impact: 'Medium Impact', impactColor: '#ca8a04', impactBg: '#fefce8', effort: 'Low Effort',
-    });
-  }
-
-  return recs;
-}
-
 const ExecutiveDashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [customUsers, setCustomUsers] = useState(1);
   const [customDuration, setCustomDuration] = useState(30);
-  const [selectedEngine, setSelectedEngine] = useState('node');
-  const [engineReport, setEngineReport] = useState(null);
   const [engineRunning, setEngineRunning] = useState(false);
   const [engineElapsed, setEngineElapsed] = useState(0);
   const [lastAnalysisTime, setLastAnalysisTime] = useState(null);
@@ -507,138 +335,36 @@ const ExecutiveDashboard = () => {
 
   // Stop engine animation when node test completes or errors
   useEffect(() => {
-    if (selectedEngine === 'node' && engineRunning && (loadTestStatus === 'done' || loadTestStatus === null)) {
+    if (engineRunning && (loadTestStatus === 'done' || loadTestStatus === null)) {
       setEngineRunning(false);
     }
-  }, [loadTestStatus, selectedEngine, engineRunning]);
+  }, [loadTestStatus, engineRunning]);
 
-  // Also update when engine report arrives (k6/gatling)
-  useEffect(() => {
-    if (engineReport && engineReport.timestamp) {
-      setLastAnalysisTime(new Date(engineReport.timestamp).toLocaleString('en-US', {
-        year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
-      }));
-      setLastAnalysisDuration(`${engineReport.elapsed || 0} seconds`);
-      setLastTestRunId('PERF-' + engineReport.engine.toUpperCase() + '-' + engineReport.timestamp.replace(/[^0-9]/g, '').slice(-6));
-    }
-  }, [engineReport]);
-
-  // Handle running tests with different engines
+  // Handle running tests with the built-in LoadRunner
   const handleRunEngine = async () => {
-    if (selectedEngine === 'node') {
-      // Start elapsed timer for node (same animation as k6/gatling)
-      setEngineRunning(true);
-      setEngineElapsed(0);
-      const timerStart = Date.now();
-      const timerInterval = setInterval(() => {
-        setEngineElapsed(Math.round((Date.now() - timerStart) / 1000));
-      }, 1000);
+    setEngineRunning(true);
+    setEngineElapsed(0);
+    const timerStart = Date.now();
+    const timerInterval = setInterval(() => {
+      setEngineElapsed(Math.round((Date.now() - timerStart) / 1000));
+    }, 1000);
 
-      runLoadTest('Custom Load Test', customUsers, customDuration * 1000, () => {
-        clearInterval(timerInterval);
-        setEngineRunning(false);
-      });
-      return;
-    }
-
-    const token = localStorage.getItem('token');
-    const endpoint = selectedEngine === 'k6' ? '/api/loadtest/run-k6' : '/api/loadtest/run-gatling';
-
-    try {
-      setEngineRunning(true);
-      setEngineElapsed(0);
-      setEngineReport(null);
-
-      // Start elapsed timer
-      const timerStart = Date.now();
-      const timerInterval = setInterval(() => {
-        setEngineElapsed(Math.round((Date.now() - timerStart) / 1000));
-      }, 1000);
-
-      await fetch(`${endpoint}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-        body: JSON.stringify({ users: customUsers, duration: customDuration }),
-      });
-
-      // Poll for completion
-      const pollInterval = setInterval(async () => {
-        try {
-          const res = await fetch('/api/loadtest/engine-status', {
-            headers: { 'Authorization': `Bearer ${token}` },
-          });
-          const data = await res.json();
-          if (!data.isRunning) {
-            clearInterval(pollInterval);
-            clearInterval(timerInterval);
-            setEngineRunning(false);
-            const result = data.lastResults[selectedEngine];
-            if (result && !result.error) {
-              setEngineReport(result);
-            }
-          }
-        } catch (e) { /* ignore polling errors */ }
-      }, 2000);
-
-      // Safety timeout
-      setTimeout(() => { clearInterval(pollInterval); clearInterval(timerInterval); setEngineRunning(false); }, 300000);
-    } catch (err) {
+    runLoadTest('Custom Load Test', customUsers, customDuration * 1000, () => {
+      clearInterval(timerInterval);
       setEngineRunning(false);
-      console.error('Engine run failed:', err);
-    }
+    });
   };
 
-  // Generate dynamic findings from load test results (Node runner OR k6/Gatling engine)
-  const engineFindings = engineReport ? generateFindingsFromEngine(engineReport) : [];
-  const nodeFindings = loadTestResult ? generateFindings(loadTestResult) : [];
-  // Use the most recent result: engine report takes priority if newer
-  const dynamicFindings = engineFindings.length > 0 && (!loadTestResult || (engineReport && engineReport.timestamp > (loadTestResult.timestamp || '')))
-    ? engineFindings
-    : nodeFindings;
+  // Generate dynamic findings from load test results
+  const dynamicFindings = loadTestResult ? generateFindings(loadTestResult) : [];
   const displayFindings = dynamicFindings.length > 0 ? dynamicFindings : [];
 
   const criticalCount = displayFindings.filter(f => f.severity === 'Critical').length;
   const highCount = displayFindings.filter(f => f.severity === 'High').length;
   const warningCount = displayFindings.filter(f => f.severity === 'Warning').length;
 
-  // Compute KPI data from the most recent test result (Node, k6, or Gatling)
+  // Compute KPI data from the most recent test result
   const kpiData = (() => {
-    // k6 engine report
-    if (engineReport && engineReport.engine === 'k6' && engineReport.summary) {
-      const metrics = engineReport.summary.metrics || {};
-      const httpDuration = metrics.http_req_duration || {};
-      const httpFailed = metrics.http_req_failed || {};
-      const httpReqs = metrics.http_reqs || {};
-      const p95 = httpDuration['p(95)'] || 0;
-      const failRate = (httpFailed.value || 0) * 100;
-      const successRate = (100 - failRate).toFixed(1);
-      const rps = (httpReqs.rate || 0).toFixed(1);
-      const totalReqs = httpReqs.count || 0;
-      const p95Color = p95 > 2000 ? '#dc2626' : p95 > 500 ? '#ca8a04' : '#16a34a';
-
-      return {
-        usersTested: `${engineReport.users} users`,
-        successRate: parseFloat(successRate),
-        throughput: `${rps} req/s`,
-        totalRequests: totalReqs.toLocaleString(),
-        p95: p95 > 1000 ? `${(p95/1000).toFixed(1)}s` : `${p95.toFixed(0)}ms`,
-        p95Raw: p95,
-        p95Color,
-      };
-    }
-    // Gatling engine report
-    if (engineReport && engineReport.engine === 'gatling') {
-      return {
-        usersTested: `${engineReport.users} users`,
-        successRate: 90, // Gatling doesn't provide this in our simple result
-        throughput: `~${(engineReport.users * 5 / engineReport.elapsed * engineReport.elapsed / engineReport.duration).toFixed(1)} req/s`,
-        totalRequests: '—',
-        p95: '—',
-        p95Raw: 0,
-        p95Color: '#16a34a',
-      };
-    }
-    // Node runner result
     if (loadTestResult && loadTestResult.summary) {
       const successRate = parseFloat(loadTestResult.summary.success_rate) || 0;
       const rps = loadTestResult.summary.requests_per_second || '0';
@@ -662,7 +388,7 @@ const ExecutiveDashboard = () => {
 
   // Compute Health Score (0-100) from test results
   const healthBreakdown = (() => {
-    if (!loadTestResult && !engineReport) {
+    if (!loadTestResult) {
       return null; // No data yet
     }
 
@@ -670,11 +396,7 @@ const ExecutiveDashboard = () => {
     let successRate = kpiData.successRate || 100;
     let rpsPerUser = 0;
 
-    if (engineReport && engineReport.engine === 'k6' && engineReport.summary) {
-      const metrics = engineReport.summary.metrics || {};
-      const httpReqs = metrics.http_reqs || {};
-      rpsPerUser = engineReport.users > 0 ? (httpReqs.rate || 0) / engineReport.users : 0;
-    } else if (loadTestResult && loadTestResult.summary) {
+    if (loadTestResult && loadTestResult.summary) {
       const rps = parseFloat(loadTestResult.summary.requests_per_second) || 0;
       rpsPerUser = loadTestResult.users > 0 ? rps / loadTestResult.users : 0;
     }
@@ -703,7 +425,7 @@ const ExecutiveDashboard = () => {
     const p95 = kpiData.p95Raw || 0;
 
     // No test run yet
-    if (!loadTestResult && !engineReport) {
+    if (!loadTestResult) {
       return {
         icon: '🚀',
         title: 'Run Your First Load Test',
@@ -763,7 +485,7 @@ const ExecutiveDashboard = () => {
     }
 
     // System is healthy — suggest scaling test
-    const currentUsers = loadTestResult?.users || engineReport?.users || 50;
+    const currentUsers = loadTestResult?.users || 50;
     const nextUsers = Math.min(currentUsers * 2, 2000);
     return {
       icon: '📈',
@@ -1068,19 +790,14 @@ const ExecutiveDashboard = () => {
             🔍 Detected Bottlenecks
             <span style={styles.aiBadge}>{displayFindings.length} Findings</span>
           </h2>
-          {!loadTestResult && !engineReport && (
+          {!loadTestResult && (
             <p style={{color: '#64748b', fontSize: '14px', marginBottom: '1rem', fontStyle: 'italic'}}>
               Run a load test to see real-time bottleneck detection. Showing sample findings below.
             </p>
           )}
-          {loadTestResult && !engineFindings.length && (
+          {loadTestResult && (
             <p style={{color: '#16a34a', fontSize: '14px', marginBottom: '1rem', fontWeight: 500}}>
               ✅ Showing live findings from last test: {loadTestResult.scenario} ({loadTestResult.users} users)
-            </p>
-          )}
-          {engineFindings.length > 0 && (
-            <p style={{color: '#16a34a', fontSize: '14px', marginBottom: '1rem', fontWeight: 500}}>
-              ✅ Showing live findings from {engineReport.engine === 'k6' ? 'k6' : 'Gatling'} test: {engineReport.users} users × {engineReport.duration}s
             </p>
           )}
           <div style={styles.findings}>
@@ -1110,22 +827,17 @@ const ExecutiveDashboard = () => {
             💡 AI Recommendations
             <span style={styles.aiBadge}>Priority Ordered</span>
           </h2>
-          {!loadTestResult && !engineReport && (
+          {!loadTestResult && (
             <p style={{color: '#64748b', fontSize: '14px', marginBottom: '1rem', fontStyle: 'italic'}}>
               Run a load test to generate targeted recommendations based on actual bottlenecks.
             </p>
           )}
-          {loadTestResult && !engineFindings.length && (
+          {loadTestResult && (
             <p style={{color: '#16a34a', fontSize: '14px', marginBottom: '1rem', fontWeight: 500}}>
               ✅ Recommendations generated from: {loadTestResult.scenario} ({loadTestResult.users} users)
             </p>
           )}
-          {engineFindings.length > 0 && (
-            <p style={{color: '#16a34a', fontSize: '14px', marginBottom: '1rem', fontWeight: 500}}>
-              ✅ Recommendations generated from {engineReport.engine === 'k6' ? 'k6' : 'Gatling'} test: {engineReport.users} users × {engineReport.duration}s
-            </p>
-          )}
-          {(engineFindings.length > 0 ? generateRecommendationsFromEngine(engineReport) : loadTestResult ? generateRecommendations(loadTestResult) : recommendations).map((rec, i) => (
+          {(loadTestResult ? generateRecommendations(loadTestResult) : recommendations).map((rec, i) => (
             <div key={i} style={styles.recCard}>
               <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '8px'}}>
                 <div style={styles.recTitle}>#{i + 1} {rec.title}</div>
@@ -1155,7 +867,7 @@ const ExecutiveDashboard = () => {
             <p style={{ color: '#64748b', fontSize: '14px', marginBottom: '1.5rem', lineHeight: 1.6 }}>
               Select a scenario or enter custom concurrent users to run a performance load test.
               The test simulates real user traffic (Login → Search → Product View → Add to Cart → Checkout)
-              and automatically sends email alerts to <strong>suvarnamukhy666@gmail.com</strong>
+              and automatically sends email alerts to <strong>stakeholder028@gmail.com</strong>
               with revenue impact calculations when bottlenecks are detected.
             </p>
 
@@ -1214,24 +926,15 @@ const ExecutiveDashboard = () => {
 
               {/* Engine Selector Tabs */}
               <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
-                {[
-                  { id: 'node', label: '⚡ Node', desc: 'Built-in' },
-                  { id: 'k6', label: '📊 k6', desc: 'Grafana' },
-                  { id: 'gatling', label: '🔥 Gatling', desc: 'Enterprise' },
-                ].map(eng => (
-                  <button
-                    key={eng.id}
-                    onClick={() => setSelectedEngine(eng.id)}
-                    style={{
-                      padding: '12px 20px', borderRadius: '10px', border: selectedEngine === eng.id ? '2px solid #6366f1' : '1px solid #e2e8f0',
-                      background: selectedEngine === eng.id ? '#eef2ff' : 'white',
-                      cursor: 'pointer', textAlign: 'center', transition: 'all 0.2s', flex: 1,
-                    }}
-                  >
-                    <div style={{ fontSize: '18px', marginBottom: '4px' }}>{eng.label}</div>
-                    <div style={{ fontSize: '11px', color: '#64748b' }}>{eng.desc}</div>
-                  </button>
-                ))}
+                <div
+                  style={{
+                    padding: '12px 20px', borderRadius: '10px', border: '2px solid #6366f1',
+                    background: '#eef2ff', textAlign: 'center', flex: 1,
+                  }}
+                >
+                  <div style={{ fontSize: '18px', marginBottom: '4px' }}>🚀 PerfPilot LoadRunner</div>
+                  <div style={{ fontSize: '11px', color: '#64748b' }}>Built-in Node.js Engine — No external dependencies</div>
+                </div>
               </div>
 
               {/* Users + Duration + Run */}
@@ -1287,7 +990,7 @@ const ExecutiveDashboard = () => {
                     transition: 'all 0.2s',
                   }}
                 >
-                  🚀 Run with {selectedEngine === 'node' ? 'Node' : selectedEngine === 'k6' ? 'k6' : 'Gatling'}
+                  🚀 Run Load Test
                 </button>
               </div>
 
@@ -1298,19 +1001,19 @@ const ExecutiveDashboard = () => {
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <div style={{ animation: 'spin 1s linear infinite', fontSize: '18px' }}>🔄</div>
                       <span style={{ fontWeight: 600, color: '#1e40af', fontSize: '14px' }}>
-                        Running {selectedEngine === 'k6' ? 'k6' : selectedEngine === 'gatling' ? 'Gatling' : 'Node'} test... {customUsers} users × {customDuration}s
+                        Running load test... {customUsers} users × {customDuration}s
                       </span>
                     </div>
                     <span style={{ fontSize: '13px', color: '#3b82f6', fontWeight: 600 }}>
-                      {engineElapsed}s / ~{selectedEngine === 'gatling' ? customDuration + 20 : customDuration + 5}s
+                      {engineElapsed}s / ~{customDuration + 5}s
                     </span>
                   </div>
                   {/* Progress bar */}
                   <div style={{ width: '100%', height: '8px', background: '#dbeafe', borderRadius: '4px', overflow: 'hidden' }}>
                     <div style={{
                       height: '100%', borderRadius: '4px',
-                      background: selectedEngine === 'node' ? 'linear-gradient(90deg, #6366f1, #8b5cf6)' : 'linear-gradient(90deg, #3b82f6, #6366f1)',
-                      width: `${Math.min(95, (engineElapsed / (selectedEngine === 'gatling' ? customDuration + 20 : customDuration + 5)) * 100)}%`,
+                      background: 'linear-gradient(90deg, #6366f1, #8b5cf6)',
+                      width: `${Math.min(95, (engineElapsed / (customDuration + 5)) * 100)}%`,
                       transition: 'width 1s linear',
                     }} />
                   </div>
@@ -1324,27 +1027,25 @@ const ExecutiveDashboard = () => {
               {/* Engine info note (hidden during run) */}
               {!engineRunning && (
                 <div style={{ marginTop: '12px', fontSize: '12px', color: '#94a3b8' }}>
-                  {selectedEngine === 'node' && '⚡ Node Runner — instant results, built into the dashboard. No external tools needed.'}
-                  {selectedEngine === 'k6' && '📊 k6 by Grafana Labs — industry-standard, rich metrics with thresholds. Interactive report opens in new tab.'}
-                  {selectedEngine === 'gatling' && '🔥 Gatling — enterprise-grade JVM-based load testing. Generates detailed HTML report with Highcharts.'}
+                  🚀 PerfPilot LoadRunner — instant results, built into the dashboard. No external tools needed.
                 </div>
               )}
             </div>
 
-            {/* View Report Button - shown after k6/gatling run */}
-            {(engineReport) && (
+            {/* View Report Buttons - shown after load test completes */}
+            {(loadTestStatus === 'done' || loadTestResult) && (
               <div style={{ marginTop: '16px', background: '#f0fdf4', borderRadius: '12px', padding: '16px', border: '1px solid #bbf7d0', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
                 <div>
                   <p style={{ margin: 0, fontWeight: 600, color: '#166534', fontSize: '14px' }}>
-                    ✅ {engineReport.engine === 'k6' ? 'k6' : 'Gatling'} test completed in {engineReport.elapsed}s
+                    ✅ Load test completed{loadTestResult?.elapsed ? ` in ${loadTestResult.elapsed}s` : ''}
                   </p>
                   <p style={{ margin: '4px 0 0', fontSize: '12px', color: '#15803d' }}>
-                    {engineReport.users} users × {engineReport.duration}s | Interactive report ready
+                    {loadTestResult?.users ? `${loadTestResult.users} users` : ''}{loadTestResult?.durationMs ? ` × ${loadTestResult.durationMs / 1000}s` : ''} | Interactive HTML report ready
                   </p>
                 </div>
                 <div style={{ display: 'flex', gap: '8px' }}>
                   <button
-                    onClick={() => window.open(`/api/loadtest/report/${engineReport.engine}`, '_blank')}
+                    onClick={() => window.open('/api/loadtest/report', '_blank')}
                     style={{
                       padding: '10px 20px', borderRadius: '10px', border: 'none',
                       background: 'linear-gradient(135deg, #10b981, #059669)',
@@ -1355,17 +1056,14 @@ const ExecutiveDashboard = () => {
                   </button>
                   <button
                     onClick={() => {
-                      const downloadUrl = engineReport.engine === 'gatling'
-                        ? '/api/loadtest/download/gatling'
-                        : `/api/loadtest/report/${engineReport.engine}`;
-                      fetch(downloadUrl)
+                      fetch('/api/loadtest/report/download')
                         .then(res => res.blob())
                         .then(blob => {
                           const htmlBlob = new Blob([blob], { type: 'text/html' });
                           const url = window.URL.createObjectURL(htmlBlob);
                           const a = document.createElement('a');
                           a.href = url;
-                          a.download = `${engineReport.engine}-report.html`;
+                          a.download = `perfpilot-report-${Date.now()}.html`;
                           document.body.appendChild(a);
                           a.click();
                           document.body.removeChild(a);

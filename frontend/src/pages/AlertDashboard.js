@@ -641,7 +641,7 @@ function AlertDashboard() {
 
       {testEmailStatus === 'sent' && (
         <span style={{ color: '#16a34a', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '4px' }}>
-          ✅ {engineRunning ? 'Test alert triggered!' : 'Test email sent!'} Check suvarnamukhy666@gmail.com
+          ✅ {engineRunning ? 'Test alert triggered!' : 'Test email sent!'} Check stakeholder028@gmail.com
         </span>
       )}
       {testEmailStatus === 'error' && (
@@ -680,7 +680,7 @@ function AlertDashboard() {
           </span>
         </div>
         <p style={styles.subtitle}>
-          Real-time performance monitoring with email/SMS notifications to suvarnamukhy666@gmail.com.
+          Real-time performance monitoring with email/SMS notifications to stakeholder028@gmail.com.
           Detects degradation, calculates revenue impact, and sends automated alerts.
         </p>
       </div>
@@ -731,7 +731,7 @@ function AlertDashboard() {
             <p style={{ fontSize: '13px', color: '#64748b', margin: '0 0 20px' }}>
               Run a performance load test with one click. The test simulates real user traffic
               (Login → Search → Product Detail → Add to Cart → Checkout) and automatically
-              sends alerts to <strong>suvarnamukhy666@gmail.com</strong> with revenue impact
+              sends alerts to <strong>stakeholder028@gmail.com</strong> with revenue impact
               calculations when bottlenecks are detected.
             </p>
 
@@ -876,7 +876,7 @@ function AlertDashboard() {
             <div>
               <h4 style={{ color: '#6366f1', margin: '0 0 8px' }}>3️⃣ Email & SMS Notifications</h4>
               <p style={{ fontSize: '14px', color: '#475569', lineHeight: '1.6', margin: 0 }}>
-                Alerts are sent to <strong>suvarnamukhy666@gmail.com</strong> with rich HTML formatting
+                Alerts are sent to <strong>stakeholder028@gmail.com</strong> with rich HTML formatting
                 showing the severity, current metrics, business impact, and recommended actions.
                 SMS delivery is supported via carrier email-to-SMS gateways (e.g., number@vtext.com for Verizon).
               </p>
