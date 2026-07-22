@@ -245,14 +245,12 @@ async function start() {
       // Start the alert engine automatically
       try {
         const { getAlertEngine } = require('./services/alertEngine');
-        const { closeTransporter } = require('./services/notificationService');
         const engine = getAlertEngine();
         engine.start();
         
         // Clean up on shutdown
         const shutdown = async () => {
           engine.stop();
-          await closeTransporter();
           server.close(() => process.exit(0));
         };
         process.on('SIGTERM', shutdown);

@@ -121,7 +121,7 @@ router.post('/stop', authenticate, requireAdmin, (req, res) => {
 
 router.post('/trigger', authenticate, requireAdmin, async (req, res) => {
   try {
-    const engine = getAlertEngine();
+    const { sendCombinedAlert } = require('../services/notificationService');
     const { type, severity, metric, value, threshold } = req.body;
     
     const testAlert = {
@@ -139,20 +139,16 @@ router.post('/trigger', authenticate, requireAdmin, async (req, res) => {
       },
       details: 'This is a simulated alert triggered from the dashboard for testing notification delivery.',
       recommendations: [
-        'Verify email delivery to suvarnamukhy666@gmail.com',
-        'Check SMS gateway if configured',
-        'Review alert formatting in your email client',
+        'Verify email delivery to stakeholder028@gmail.com',
+        'Check alert formatting in your email client',
       ],
-      timestamp: new Date().toISOString(),
     };
     
-    const result = await engine.processFinding(testAlert);
+    const result = await sendCombinedAlert([testAlert], 'Manual Test', 1, 0, null);
     
     res.json({ 
       message: 'Test alert triggered! Check your email.', 
-      testAlert,
       delivery: result,
-      note: 'If no email credentials configured, the alert preview is shown in the server console.'
     });
   } catch (error) {
     res.status(500).json({ error: error.message });
